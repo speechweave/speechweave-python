@@ -30,7 +30,7 @@ git commit -m "chore: release v$VERSION";
 git tag "v$VERSION";
 
 echo "Pushing commit and tags to GitHub";
-git push origin main;
-git push origin "v$VERSION";
+git push github main;
+git push github "v$VERSION";
 
 echo "Release [v$VERSION] triggered successfully";
