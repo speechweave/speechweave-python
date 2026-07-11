@@ -1,0 +1,1 @@
+"""Compatibility-shaped API namespaces."""
