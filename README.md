@@ -25,21 +25,40 @@ export SPEECHWEAVE_API_KEY="sk_..."
 ```python
 from speechweave import SpeechWeave, wait_for_job
 
-client = SpeechWeave()
+sw = SpeechWeave()
+
+job = sw.jobs.create(
+	file="./podcast.mp3",
+	model="core",
+	service_mode="deferred",
+)
+
+done = wait_for_job(sw, job["id"])
+print(done["transcript"])
+```
+
+`jobs.create` accepts a local path string or an open binary file. For URL input, cancel, and other job operations, see the [API reference](https://speechweave.com/docs/api).
+
+## Handling buffers & streams
+
+When you already have an open file handle or in-memory bytes, use `transcribe_file` directly:
+
+```python
+from speechweave import SpeechWeave, wait_for_job
+
+sw = SpeechWeave()
 
 with open("audio.wav", "rb") as f:
-	job = client.transcribe_file(
+	job = sw.transcribe_file(
 		f,
 		filename="audio.wav",
 		model="core",
 		language="en",
 	)
 
-result = wait_for_job(client, job["id"], timeout_sec=300)
+result = wait_for_job(sw, job["id"], timeout_sec=300)
 print(result["transcript"])
 ```
-
-For `jobs.create`, URL input, cancel, and other job operations, see the [API reference](https://speechweave.com/docs/api).
 
 ## Async
 
@@ -48,16 +67,15 @@ import asyncio
 from speechweave import AsyncSpeechWeave, async_wait_for_job
 
 async def main():
-	async with AsyncSpeechWeave() as client:
-		with open("audio.wav", "rb") as f:
-			job = await client.transcribe_file(
-				f,
-				filename="audio.wav",
-				model="core",
-			)
+	async with AsyncSpeechWeave() as sw:
+		job = await sw.jobs.create(
+			file="./podcast.mp3",
+			model="core",
+			service_mode="deferred",
+		)
 
-		result = await async_wait_for_job(client, job["id"])
-		print(result["transcript"])
+		done = await async_wait_for_job(sw, job["id"])
+		print(done["transcript"])
 
 asyncio.run(main())
 ```
@@ -87,6 +105,10 @@ try:
 except SpeechWeaveError as e:
 	print(e.status)
 	print(e.code)
+	# Prepaid wallet / spend caps: HTTP 402 with codes like INSUFFICIENT_BALANCE,
+	# WALLET_EMPTY, SPEND_CAP_REACHED, CHECKOUT_REQUIRED.
+	if e.status == 402:
+		print("Top up the wallet or raise spend caps, then retry.")
 ```
 
 ## Configuration

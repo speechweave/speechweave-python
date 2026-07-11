@@ -284,6 +284,34 @@ def test_error_handling_payload():
 	assert exc_info.value.code == "UNAUTHORIZED"
 
 
+def test_maps_402_payment_required_to_speechweave_error():
+	client = SpeechWeave(api_key="sk_test_key")
+
+	class FakeResponse:
+		status_code = 402
+		text = '{"error":"Insufficient wallet balance","code":"INSUFFICIENT_BALANCE"}'
+		reason_phrase = "Payment Required"
+		content = text.encode()
+		headers = {}
+
+		def json(self):
+			return {
+				"error": "Insufficient wallet balance",
+				"message": "Insufficient wallet balance",
+				"code": "INSUFFICIENT_BALANCE",
+				"balanceCents": 0,
+				"requiredCents": 100,
+			}
+
+	with patch.object(client._client, "request", return_value=FakeResponse()):
+		with pytest.raises(SpeechWeaveError) as exc_info:
+			client.request_json("GET", "/jobs/any_id")
+
+	assert exc_info.value.status == 402
+	assert exc_info.value.code == "INSUFFICIENT_BALANCE"
+	assert "Insufficient wallet balance" in str(exc_info.value)
+
+
 def test_put_presigned_url_streams_file_with_content_length():
 
 	client = SpeechWeave(api_key="sk_test_key")
