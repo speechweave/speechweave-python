@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.1]
+
+### Fixed
+- **Linter Dependency Pinning:** Pinned `ruff` in `dev` dependencies (`0.15.21`) to match pre-commit configurations and prevent upstream version drift from breaking release builds. *(Note: Replaces `1.1.0`, which was not published to PyPI due to an automated CI workflow error; includes all `1.1.0` changes.)*
+
 ## [1.1.0]
 
 ### Added
