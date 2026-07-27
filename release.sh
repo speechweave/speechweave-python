@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+echo "Reminder: add a CHANGELOG.md entry for this release before committing.";
+echo;
+
 if [[ $(git status --porcelain) ]]; then
 
 	echo "Error: git working tree is not clean. Commit or stash changes first.";

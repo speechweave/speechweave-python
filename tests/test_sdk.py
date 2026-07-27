@@ -392,6 +392,67 @@ def test_put_presigned_url_file_size_override_for_nonseekable():
 	assert kwargs["headers"]["Content-Type"] == "audio/wav"
 
 
+class _FakePresignResponse:
+	status_code = 200
+	text = ""
+	content = b"{}"
+
+	def json(self):
+		return {
+			"upload_url": "https://upload.example/presigned",
+			"object_key": "obj_1",
+			"id": "job_1",
+			"status": "queued",
+		}
+
+
+def test_transcribe_file_infers_content_type_from_filename():
+
+	client = SpeechWeave(api_key="sk_test_key")
+	put_response = type("R", (), {"status_code": 200, "text": ""})()
+
+	with patch.object(client._client, "request", return_value=_FakePresignResponse()) as request_mock:
+		with patch.object(client._client, "put", return_value=put_response):
+			client.transcribe_file(io.BytesIO(b"fake-flac-bytes"), filename="call.flac")
+
+	presign_call = request_mock.call_args_list[0]
+	assert presign_call.kwargs["json"]["content_type"] == "audio/flac"
+
+
+def test_transcribe_file_explicit_content_type_wins():
+
+	client = SpeechWeave(api_key="sk_test_key")
+	put_response = type("R", (), {"status_code": 200, "text": ""})()
+
+	with patch.object(client._client, "request", return_value=_FakePresignResponse()) as request_mock:
+		with patch.object(client._client, "put", return_value=put_response):
+			client.transcribe_file(
+				io.BytesIO(b"fake-flac-bytes"),
+				filename="call.flac",
+				content_type="audio/custom",
+			)
+
+	presign_call = request_mock.call_args_list[0]
+	assert presign_call.kwargs["json"]["content_type"] == "audio/custom"
+
+
+def test_jobs_namespace_create_infers_content_type_from_filename():
+	"""
+	Regression test: Jobs.create() used to collapse an omitted content_type to the literal
+	"application/octet-stream" before calling transcribe_file, defeating inference entirely.
+	"""
+
+	client = SpeechWeave(api_key="sk_test_key")
+	put_response = type("R", (), {"status_code": 200, "text": ""})()
+
+	with patch.object(client._client, "request", return_value=_FakePresignResponse()) as request_mock:
+		with patch.object(client._client, "put", return_value=put_response):
+			client.jobs.create(file=io.BytesIO(b"fake-ogg-bytes"), filename="voice.ogg")
+
+	presign_call = request_mock.call_args_list[0]
+	assert presign_call.kwargs["json"]["content_type"] == "audio/ogg"
+
+
 @pytest.mark.asyncio
 async def test_async_upload_uses_to_thread_for_reads():
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from speechweave.client import UploadBody
+from speechweave.mime import infer_content_type
 
 if TYPE_CHECKING:
 	from speechweave.async_client import AsyncSpeechWeaveClient
@@ -130,7 +131,7 @@ def upload_and_create_job(
 	*,
 	data: UploadBody,
 	filename: str,
-	content_type: str = "application/octet-stream",
+	content_type: str | None = None,
 	model: str | None = None,
 	language: str | None = None,
 	service_mode: str = "synchronous",
@@ -138,6 +139,7 @@ def upload_and_create_job(
 	file_size: int | None = None,
 ) -> dict[str, Any]:
 
+	content_type = content_type or infer_content_type(filename)
 	presign = client.presign_upload(
 		filename=filename,
 		content_type=content_type,
@@ -220,7 +222,7 @@ async def async_upload_and_create_job(
 	*,
 	data: UploadBody,
 	filename: str,
-	content_type: str = "application/octet-stream",
+	content_type: str | None = None,
 	model: str | None = None,
 	language: str | None = None,
 	service_mode: str = "synchronous",
@@ -228,6 +230,7 @@ async def async_upload_and_create_job(
 	file_size: int | None = None,
 ) -> dict[str, Any]:
 
+	content_type = content_type or infer_content_type(filename)
 	presign = await client.presign_upload(
 		filename=filename,
 		content_type=content_type,

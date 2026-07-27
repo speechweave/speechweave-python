@@ -2,6 +2,7 @@ from speechweave.version import __version__
 from speechweave.async_client import AsyncSpeechWeaveClient
 from speechweave.client import SpeechWeaveClient
 from speechweave.errors import SpeechWeaveError
+from speechweave.mime import infer_content_type
 from speechweave.namespaces.assembly_compat import AssemblyTranscripts, AsyncAssemblyTranscripts
 from speechweave.namespaces.deepgram_compat import AsyncDeepgramListen, DeepgramListen
 from speechweave.namespaces.jobs import AsyncJobs, Jobs
@@ -60,6 +61,7 @@ __all__ = [
 	"SpeechWeaveError",
 	"__version__",
 	"async_wait_for_job",
+	"infer_content_type",
 	"verify_webhook",
 	"wait_for_job",
 ]

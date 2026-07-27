@@ -6,6 +6,7 @@ from typing import Any, BinaryIO, Mapping, MutableMapping, Union
 import httpx
 
 from speechweave.errors import SpeechWeaveError
+from speechweave.mime import infer_content_type
 from speechweave.version import __version__
 
 #: Bytes, buffer, or file-like object accepted by upload helpers.
@@ -347,7 +348,7 @@ class SpeechWeaveClient:
 		file_obj: BinaryIO,
 		*,
 		filename: str = "audio.bin",
-		content_type: str = "application/octet-stream",
+		content_type: str | None = None,
 		model: str | None = None,
 		service_mode: str | None = None,
 		language: str | None = None,
@@ -364,11 +365,13 @@ class SpeechWeaveClient:
 		Args:
 			file_obj: Open binary file or buffer to upload.
 			filename: Defaults to `audio.bin`.
-			content_type: Defaults to `application/octet-stream`.
+			content_type: Inferred from filename's extension when omitted; falls back to
+				`application/octet-stream`.
 			language: Two-letter ISO code (e.g. 'en', 'es').
 			file_size: `Content-Length` when the body cannot be measured.
 		"""
 
+		content_type = content_type or infer_content_type(filename)
 		presign = self.presign_upload(
 			filename=filename,
 			content_type=content_type,

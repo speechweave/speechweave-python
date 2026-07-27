@@ -9,6 +9,7 @@ import httpx
 
 from speechweave.client import UploadBody, _upload_headers
 from speechweave.errors import SpeechWeaveError
+from speechweave.mime import infer_content_type
 from speechweave.version import __version__
 
 _UPLOAD_CHUNK_SIZE = 64 * 1024
@@ -321,7 +322,7 @@ class AsyncSpeechWeaveClient:
 		file_obj: BinaryIO,
 		*,
 		filename: str = "audio.bin",
-		content_type: str = "application/octet-stream",
+		content_type: str | None = None,
 		model: str | None = None,
 		service_mode: str | None = None,
 		language: str | None = None,
@@ -339,11 +340,13 @@ class AsyncSpeechWeaveClient:
 		Args:
 			file_obj: Open binary file or buffer to upload.
 			filename: Defaults to `audio.bin`.
-			content_type: Defaults to `application/octet-stream`.
+			content_type: Inferred from filename's extension when omitted; falls back to
+				`application/octet-stream`.
 			language: Two-letter ISO code (e.g. 'en', 'es').
 			file_size: `Content-Length` when the body cannot be measured.
 		"""
 
+		content_type = content_type or infer_content_type(filename)
 		presign = await self.presign_upload(
 			filename=filename,
 			content_type=content_type,

@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -8,6 +8,7 @@ from speechweave.namespaces.compat_shapes import (
 	shape_assembly_response,
 	shape_deepgram_response,
 	shape_openai_response,
+	upload_and_create_job,
 )
 
 
@@ -163,4 +164,73 @@ async def test_async_create_job_from_url_passes_service_mode():
 			"input_url": "https://example.com/audio.wav",
 			"service_mode": "deferred",
 		},
+	)
+
+
+def test_upload_and_create_job_infers_content_type_from_filename():
+
+	client = MagicMock()
+	client.presign_upload.return_value = {
+		"upload_url": "https://example.com/upload",
+		"object_key": "obj_infer",
+	}
+	client.create_job.return_value = {"id": "job_infer"}
+
+	upload_and_create_job(
+		client,
+		data=b"audio",
+		filename="note.opus",
+	)
+
+	client.presign_upload.assert_called_once_with(
+		filename="note.opus",
+		content_type="audio/opus",
+	)
+	assert client.put_presigned_url.call_args.args[2] == "audio/opus"
+
+
+def test_upload_and_create_job_explicit_content_type_wins():
+
+	client = MagicMock()
+	client.presign_upload.return_value = {
+		"upload_url": "https://example.com/upload",
+		"object_key": "obj_explicit",
+	}
+	client.create_job.return_value = {"id": "job_explicit"}
+
+	upload_and_create_job(
+		client,
+		data=b"audio",
+		filename="note.opus",
+		content_type="audio/custom",
+	)
+
+	client.presign_upload.assert_called_once_with(
+		filename="note.opus",
+		content_type="audio/custom",
+	)
+
+
+@pytest.mark.asyncio
+async def test_async_upload_and_create_job_infers_content_type_from_filename():
+
+	client = AsyncMock()
+	client.presign_upload = AsyncMock(
+		return_value={
+			"upload_url": "https://example.com/upload",
+			"object_key": "obj_async_infer",
+		},
+	)
+	client.put_presigned_url = AsyncMock()
+	client.create_job = AsyncMock(return_value={"id": "job_async_infer"})
+
+	await async_upload_and_create_job(
+		client,
+		data=b"audio",
+		filename="call.flac",
+	)
+
+	client.presign_upload.assert_awaited_once_with(
+		filename="call.flac",
+		content_type="audio/flac",
 	)

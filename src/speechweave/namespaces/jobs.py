@@ -55,7 +55,7 @@ class Jobs:
 					return self._client.transcribe_file(
 						f,
 						filename=filename or file.split("/")[-1] or "audio.bin",
-						content_type=content_type or "application/octet-stream",
+						content_type=content_type,
 						model=model,
 						service_mode=service_mode,
 						language=language,
@@ -66,7 +66,7 @@ class Jobs:
 			return self._client.transcribe_file(
 				file,
 				filename=filename or "audio.bin",
-				content_type=content_type or "application/octet-stream",
+				content_type=content_type,
 				model=model,
 				service_mode=service_mode,
 				language=language,
@@ -184,7 +184,7 @@ class AsyncJobs:
 					return await self._client.transcribe_file(
 						f,
 						filename=filename or file.split("/")[-1] or "audio.bin",
-						content_type=content_type or "application/octet-stream",
+						content_type=content_type,
 						model=model,
 						service_mode=service_mode,
 						language=language,
@@ -195,7 +195,7 @@ class AsyncJobs:
 			return await self._client.transcribe_file(
 				file,
 				filename=filename or "audio.bin",
-				content_type=content_type or "application/octet-stream",
+				content_type=content_type,
 				model=model,
 				service_mode=service_mode,
 				language=language,
