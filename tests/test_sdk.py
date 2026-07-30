@@ -312,6 +312,40 @@ def test_maps_402_payment_required_to_speechweave_error():
 	assert "Insufficient wallet balance" in str(exc_info.value)
 
 
+def test_maps_openai_style_nested_error_envelope_to_speechweave_error():
+	client = SpeechWeave(api_key="sk_test_key")
+
+	class FakeResponse:
+		status_code = 402
+		text = '{"error":{"message":"Platform monthly spend cap reached for this account tier.","type":"insufficient_quota","param":null,"code":"PLATFORM_SPEND_CAP_REACHED"},"code":"PLATFORM_SPEND_CAP_REACHED"}'
+		reason_phrase = "Payment Required"
+		content = text.encode()
+		headers = {}
+
+		def json(self):
+			return {
+				"error": {
+					"message": "Platform monthly spend cap reached for this account tier.",
+					"type": "insufficient_quota",
+					"param": None,
+					"code": "PLATFORM_SPEND_CAP_REACHED",
+				},
+				"code": "PLATFORM_SPEND_CAP_REACHED",
+				"message": "Platform monthly spend cap reached for this account tier.",
+				"limit": {"period": "month", "tier": 2, "limitCents": 50000},
+			}
+
+	with patch.object(client._client, "request", return_value=FakeResponse()):
+		with pytest.raises(SpeechWeaveError) as exc_info:
+			client.request_json("GET", "/jobs/any_id")
+
+	assert exc_info.value.status == 402
+	assert exc_info.value.code == "PLATFORM_SPEND_CAP_REACHED"
+	assert exc_info.value.error_type == "insufficient_quota"
+	assert exc_info.value.param is None
+	assert "Platform monthly spend cap reached for this account tier." in str(exc_info.value)
+
+
 def test_put_presigned_url_streams_file_with_content_length():
 
 	client = SpeechWeave(api_key="sk_test_key")

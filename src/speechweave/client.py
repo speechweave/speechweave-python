@@ -153,10 +153,25 @@ class SpeechWeaveClient:
 
 		if response.status_code >= 400:
 			body = None
+			error_type = None
+			param = None
 			try:
 				body = response.json()
-				msg = str(body.get("error") or body.get("message") or response.text)
-				code = body.get("code")
+				# `error` is an object on current servers (OpenAI-style envelope) but a
+				# plain string on servers predating that change -- handle both so this
+				# SDK version works against either.
+				error_val = body.get("error")
+				nested_error = error_val if isinstance(error_val, dict) else None
+				msg = str(
+					(nested_error.get("message") if nested_error else None)
+					or body.get("message")
+					or error_val
+					or response.text
+				)
+				code = (nested_error.get("code") if nested_error else None) or body.get("code")
+				if nested_error:
+					error_type = nested_error.get("type")
+					param = nested_error.get("param")
 				retry_after = body.get("retry_after")
 
 				if retry_after is None and response.headers.get("Retry-After"):
@@ -176,6 +191,8 @@ class SpeechWeaveClient:
 				str(code) if code is not None else str(response.status_code),
 				body=body,
 				retry_after=retry_after if isinstance(retry_after, int) else None,
+				error_type=error_type,
+				param=param,
 			)
 
 		if response.status_code == 204 or not response.content:

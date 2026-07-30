@@ -134,11 +134,25 @@ class AsyncSpeechWeaveClient:
 
 		if r.status_code >= 400:
 			body = None
+			error_type = None
+			param = None
 
 			try:
 				body = r.json()
-				msg = str(body.get("error") or body.get("message") or r.text)
-				code = body.get("code")
+				# `error` is an object on current servers (OpenAI-style envelope) but a plain string on
+				# on servers predating that change, so support both for compatibility.
+				error_val = body.get("error")
+				nested_error = error_val if isinstance(error_val, dict) else None
+				msg = str(
+					(nested_error.get("message") if nested_error else None)
+					or body.get("message")
+					or error_val
+					or r.text
+				)
+				code = (nested_error.get("code") if nested_error else None) or body.get("code")
+				if nested_error:
+					error_type = nested_error.get("type")
+					param = nested_error.get("param")
 				retry_after = body.get("retry_after")
 				if retry_after is None and r.headers.get("Retry-After"):
 					try:
@@ -155,6 +169,8 @@ class AsyncSpeechWeaveClient:
 				str(code) if code is not None else str(r.status_code),
 				body=body,
 				retry_after=retry_after if isinstance(retry_after, int) else None,
+				error_type=error_type,
+				param=param,
 			)
 
 		if r.status_code == 204 or not r.content:

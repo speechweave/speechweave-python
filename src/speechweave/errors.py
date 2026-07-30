@@ -9,6 +9,8 @@ class SpeechWeaveError(Exception):
 		code: str | None = None,
 		body=None,
 		retry_after: int | None = None,
+		error_type: str | None = None,
+		param: str | None = None,
 	):
 
 		super().__init__(message)
@@ -17,3 +19,5 @@ class SpeechWeaveError(Exception):
 		self.code = code
 		self.body = body
 		self.retry_after = retry_after
+		self.error_type = error_type
+		self.param = param
