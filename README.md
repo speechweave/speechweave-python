@@ -115,6 +115,10 @@ except SpeechWeaveError as e:
 			print("Monthly account limit reached; do not retry until next month.")
 		else:
 			print("Top up the wallet or raise spend caps, then retry.")
+	# HTTP 403 with code EMAIL_UNVERIFIED: the account owning this API key hasn't
+	# verified its email yet. Verify it, then retry -- the key itself is still valid.
+	if e.status == 403 and e.code == "EMAIL_UNVERIFIED":
+		print("Verify the account email before uploading or creating jobs.")
 ```
 
 ## Configuration
