@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.0]
+
+### Added
+- **Upload Limit Gate:** `transcribe_file` (on both `SpeechWeaveClient` and `AsyncSpeechWeaveClient`) and `upload_and_create_job`/`async_upload_and_create_job` now check the file size against the account's upload limits (`GET /v1/limits`, cached 5 minutes) before presigning, raising a 413 `SpeechWeaveError` with code `FILE_TOO_LARGE` locally rather than spending a presign/upload on a file the API would reject. Also adds `get_limits`/`get_cached_limits` on both clients. Falls back to letting the API decide when the limits lookup fails or the body size can't be measured (non-seekable streams).
+
 ## [1.2.0]
 
 ### Changed

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, BinaryIO, Mapping, MutableMapping, Union
 
 import httpx
 
 from speechweave.errors import SpeechWeaveError
+from speechweave.limits import LIMITS_CACHE_SECONDS, check_within_limits
 from speechweave.mime import infer_content_type
 from speechweave.version import __version__
 
@@ -87,6 +89,8 @@ class SpeechWeaveClient:
 
 		self._owns_client = client is None
 		self._client = client or httpx.Client(timeout=timeout)
+		self._cached_limits: dict[str, Any] | None = None
+		self._cached_limits_at = 0.0
 
 	def close(self) -> None:
 		"""
@@ -225,6 +229,54 @@ class SpeechWeaveClient:
 			**kwargs,
 		)
 
+	def get_limits(self) -> dict[str, Any]:
+		"""
+		Upload ceilings in bytes for the calling API key. Values are account-specific.
+
+		Prefer `get_cached_limits` on hot paths; this always hits the network.
+		"""
+
+		return self.request_json("GET", "/limits")
+
+	def get_cached_limits(self) -> dict[str, Any] | None:
+		"""
+		`get_limits` memoized for `LIMITS_CACHE_SECONDS`.
+
+		Returns None instead of raising when the lookup fails. The local size gate
+		is an optimization, so a limits outage must not block uploads the API would
+		have accepted. Failures are not cached, so the next call retries.
+		"""
+
+		now = time.monotonic()
+		if self._cached_limits is not None and now - self._cached_limits_at < LIMITS_CACHE_SECONDS:
+			return self._cached_limits
+
+		try:
+			limits = self.get_limits()
+		except Exception:
+			return None
+
+		self._cached_limits = limits
+		self._cached_limits_at = now
+
+		return limits
+
+	def ensure_within_limits(
+		self,
+		size_bytes: int | None,
+		service_mode: str | None = None,
+	) -> None:
+		"""
+		Raise a 413 `SpeechWeaveError` when a known size exceeds the account's caps.
+
+		No-op when the size is unmeasurable or the limits lookup failed.
+		"""
+
+		if size_bytes is None:
+			return
+
+		check_within_limits(size_bytes, self.get_cached_limits(), service_mode)
+
 	def presign_upload(
 		self,
 		*,
@@ -286,7 +338,7 @@ class SpeechWeaveClient:
 
 		Provide one of `object_key`, `input_url`, or `audio_url`. `type` defaults to
 		`transcription`. Omitting `service_mode` leaves the API default (deferred).
-		Synchronous rejects files over the sync size cap (default 512 MiB).
+		Synchronous has its own size cap, at or below the account cap, see `get_limits`.
 
 		Args:
 			body: Job fields. `object_key` is from a prior presign after a PUT;
@@ -376,8 +428,11 @@ class SpeechWeaveClient:
 		Presign → PUT → create job.
 
 		Returns the create ack (no transcript); poll `get_job` or `wait_for_job`.
-		Omitting `service_mode` leaves the API default (deferred). Synchronous
-		rejects files over the sync size cap (default 512 MiB).
+		Omitting `service_mode` leaves the API default (deferred).
+
+		Files whose size is measurable are checked against the account's limits
+		(see `get_limits`) before uploading, and rejected locally with a 413
+		`SpeechWeaveError` rather than spending the transfer.
 
 		Args:
 			file_obj: Open binary file or buffer to upload.
@@ -389,6 +444,11 @@ class SpeechWeaveClient:
 		"""
 
 		content_type = content_type or infer_content_type(filename)
+		# Gate before presign so an oversized file costs neither a presign nor an upload.
+		self.ensure_within_limits(
+			_content_length(file_obj, file_size=file_size),
+			service_mode,
+		)
 		presign = self.presign_upload(
 			filename=filename,
 			content_type=content_type,

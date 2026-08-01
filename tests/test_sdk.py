@@ -426,6 +426,18 @@ def test_put_presigned_url_file_size_override_for_nonseekable():
 	assert kwargs["headers"]["Content-Type"] == "audio/wav"
 
 
+def _call_for(request_mock, fragment: str):
+	"""
+	Locate a mocked request by URL fragment rather than call index. The SDK
+	makes a limits lookup before uploading, so positional order is not stable.
+	"""
+	for call in request_mock.call_args_list:
+		if fragment in str(call.args[1]):
+			return call
+
+	raise AssertionError(f"no request matching {fragment!r}")
+
+
 class _FakePresignResponse:
 	status_code = 200
 	text = ""
@@ -449,7 +461,7 @@ def test_transcribe_file_infers_content_type_from_filename():
 		with patch.object(client._client, "put", return_value=put_response):
 			client.transcribe_file(io.BytesIO(b"fake-flac-bytes"), filename="call.flac")
 
-	presign_call = request_mock.call_args_list[0]
+	presign_call = _call_for(request_mock, "/uploads")
 	assert presign_call.kwargs["json"]["content_type"] == "audio/flac"
 
 
@@ -466,7 +478,7 @@ def test_transcribe_file_explicit_content_type_wins():
 				content_type="audio/custom",
 			)
 
-	presign_call = request_mock.call_args_list[0]
+	presign_call = _call_for(request_mock, "/uploads")
 	assert presign_call.kwargs["json"]["content_type"] == "audio/custom"
 
 
@@ -483,7 +495,7 @@ def test_jobs_namespace_create_infers_content_type_from_filename():
 		with patch.object(client._client, "put", return_value=put_response):
 			client.jobs.create(file=io.BytesIO(b"fake-ogg-bytes"), filename="voice.ogg")
 
-	presign_call = request_mock.call_args_list[0]
+	presign_call = _call_for(request_mock, "/uploads")
 	assert presign_call.kwargs["json"]["content_type"] == "audio/ogg"
 
 
@@ -550,3 +562,114 @@ async def test_async_wait_for_job_mocked():
 
 	assert result["status"] == "completed"
 	assert result["transcript"] == "done"
+
+
+# =====================================================================
+# 5. UPLOAD SIZE GATE
+# =====================================================================
+
+
+def _limits_response(max_bytes: int):
+	return type(
+		"R",
+		(),
+		{
+			"status_code": 200,
+			"text": "",
+			"content": b"{}",
+			"json": lambda self: {
+				"max_input_bytes": max_bytes,
+				"sync_max_bytes": max_bytes,
+				"proxy_max_bytes": max_bytes,
+			},
+		},
+	)()
+
+
+def test_transcribe_file_rejects_oversized_input_before_presign():
+
+	client = SpeechWeave(api_key="sk_test_key")
+
+	with patch.object(client._client, "request", return_value=_limits_response(4)) as request_mock:
+		with patch.object(client._client, "put") as put_mock:
+			with pytest.raises(SpeechWeaveError) as exc_info:
+				client.transcribe_file(io.BytesIO(b"way-too-many-bytes"), filename="big.wav")
+
+	assert exc_info.value.status == 413
+	assert exc_info.value.code == "FILE_TOO_LARGE"
+	# Only the limits lookup happened — no presign, no upload.
+	assert len(request_mock.call_args_list) == 1
+	assert "/limits" in str(request_mock.call_args_list[0].args[1])
+	put_mock.assert_not_called()
+
+
+def test_transcribe_file_uploads_when_limits_lookup_fails():
+	"""The gate is an optimization; a limits outage must not block a valid upload."""
+
+	client = SpeechWeave(api_key="sk_test_key")
+	put_response = type("R", (), {"status_code": 200, "text": ""})()
+
+	def _request(method, url, **kwargs):
+		if "/limits" in str(url):
+			raise RuntimeError("limits unavailable")
+		return _FakePresignResponse()
+
+	with patch.object(client._client, "request", side_effect=_request):
+		with patch.object(client._client, "put", return_value=put_response):
+			job = client.transcribe_file(io.BytesIO(b"audio"), filename="call.wav")
+
+	assert job["id"] == "job_1"
+
+
+def test_transcribe_file_caches_limits_across_uploads():
+
+	client = SpeechWeave(api_key="sk_test_key")
+	put_response = type("R", (), {"status_code": 200, "text": ""})()
+
+	def _request(method, url, **kwargs):
+		if "/limits" in str(url):
+			return _limits_response(500 * 1024 * 1024)
+		return _FakePresignResponse()
+
+	with patch.object(client._client, "request", side_effect=_request) as request_mock:
+		with patch.object(client._client, "put", return_value=put_response):
+			client.transcribe_file(io.BytesIO(b"one"), filename="one.wav")
+			client.transcribe_file(io.BytesIO(b"two"), filename="two.wav")
+
+	limits_calls = [c for c in request_mock.call_args_list if "/limits" in str(c.args[1])]
+	assert len(limits_calls) == 1
+
+
+def test_ensure_within_limits_skips_unmeasurable_body():
+
+	client = SpeechWeave(api_key="sk_test_key")
+
+	with patch.object(client, "get_cached_limits") as limits_mock:
+		client.ensure_within_limits(None)
+
+	limits_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_transcribe_file_rejects_oversized_input_before_presign():
+
+	client = AsyncSpeechWeave(api_key="sk_test_key")
+
+	with patch.object(
+		client,
+		"get_cached_limits",
+		new=AsyncMock(
+			return_value={
+				"max_input_bytes": 4,
+				"sync_max_bytes": 4,
+				"proxy_max_bytes": 4,
+			}
+		),
+	):
+		with patch.object(client, "presign_upload", new=AsyncMock()) as presign_mock:
+			with pytest.raises(SpeechWeaveError) as exc_info:
+				await client.transcribe_file(io.BytesIO(b"way-too-many-bytes"), filename="big.wav")
+
+	assert exc_info.value.status == 413
+	presign_mock.assert_not_called()
+	await client.aclose()

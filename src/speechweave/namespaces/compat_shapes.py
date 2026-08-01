@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from speechweave.client import UploadBody
+from speechweave.client import UploadBody, _content_length
 from speechweave.mime import infer_content_type
 
 if TYPE_CHECKING:
@@ -140,6 +140,11 @@ def upload_and_create_job(
 ) -> dict[str, Any]:
 
 	content_type = content_type or infer_content_type(filename)
+	# Gate before presign so an oversized file costs neither a presign nor an upload.
+	client.ensure_within_limits(
+		_content_length(data, file_size=file_size),
+		service_mode,
+	)
 	presign = client.presign_upload(
 		filename=filename,
 		content_type=content_type,
@@ -231,6 +236,11 @@ async def async_upload_and_create_job(
 ) -> dict[str, Any]:
 
 	content_type = content_type or infer_content_type(filename)
+	# Gate before presign so an oversized file costs neither a presign nor an upload.
+	await client.ensure_within_limits(
+		_content_length(data, file_size=file_size),
+		service_mode,
+	)
 	presign = await client.presign_upload(
 		filename=filename,
 		content_type=content_type,
