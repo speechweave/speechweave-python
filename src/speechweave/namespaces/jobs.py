@@ -30,6 +30,10 @@ class Jobs:
 		model: str | None = None,
 		service_mode: str | None = None,
 		language: str | None = None,
+		task: str | None = None,
+		prompt: str | None = None,
+		temperature: float | None = None,
+		timestamp_granularities: list[str] | None = None,
 		type: str | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
@@ -45,7 +49,11 @@ class Jobs:
 			file: Local path or open binary file. Mutually exclusive with URL keys.
 			input_url: Publicly reachable audio URL (`audio_url` is an alias).
 			object_key: From a prior presign + PUT.
-			language: Two-letter ISO code (e.g. 'en', 'es').
+			language: Two-letter ISO code (e.g. 'en', 'es'). Ignored when task is 'translate'.
+			task: 'transcribe' (default) or 'translate' (translate to English).
+			prompt: Custom vocabulary/style hint for the first ~30s window.
+			temperature: Decoding temperature, clamped to [0, 1] server-side.
+			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: Content-Length when a stream body cannot be measured.
 		"""
 
@@ -59,6 +67,10 @@ class Jobs:
 						model=model,
 						service_mode=service_mode,
 						language=language,
+						task=task,
+						prompt=prompt,
+						temperature=temperature,
+						timestamp_granularities=timestamp_granularities,
 						metadata=metadata,
 						file_size=file_size,
 					)
@@ -70,6 +82,10 @@ class Jobs:
 				model=model,
 				service_mode=service_mode,
 				language=language,
+				task=task,
+				prompt=prompt,
+				temperature=temperature,
+				timestamp_granularities=timestamp_granularities,
 				metadata=metadata,
 				file_size=file_size,
 			)
@@ -87,6 +103,14 @@ class Jobs:
 			body["service_mode"] = service_mode
 		if language is not None:
 			body["language"] = language
+		if task is not None:
+			body["task"] = task
+		if prompt is not None:
+			body["prompt"] = prompt
+		if temperature is not None:
+			body["temperature"] = temperature
+		if timestamp_granularities is not None:
+			body["timestamp_granularities"] = timestamp_granularities
 		if type is not None:
 			body["type"] = type
 		if metadata is not None:
@@ -159,6 +183,10 @@ class AsyncJobs:
 		model: str | None = None,
 		service_mode: str | None = None,
 		language: str | None = None,
+		task: str | None = None,
+		prompt: str | None = None,
+		temperature: float | None = None,
+		timestamp_granularities: list[str] | None = None,
 		type: str | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
@@ -174,7 +202,11 @@ class AsyncJobs:
 			file: Local path or open binary file. Mutually exclusive with URL keys.
 			input_url: Publicly reachable audio URL (`audio_url` is an alias).
 			object_key: From a prior presign + PUT.
-			language: Two-letter ISO code (e.g. 'en', 'es').
+			language: Two-letter ISO code (e.g. 'en', 'es'). Ignored when task is 'translate'.
+			task: 'transcribe' (default) or 'translate' (translate to English).
+			prompt: Custom vocabulary/style hint for the first ~30s window.
+			temperature: Decoding temperature, clamped to [0, 1] server-side.
+			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: Content-Length when a stream body cannot be measured.
 		"""
 
@@ -188,6 +220,10 @@ class AsyncJobs:
 						model=model,
 						service_mode=service_mode,
 						language=language,
+						task=task,
+						prompt=prompt,
+						temperature=temperature,
+						timestamp_granularities=timestamp_granularities,
 						metadata=metadata,
 						file_size=file_size,
 					)
@@ -199,6 +235,10 @@ class AsyncJobs:
 				model=model,
 				service_mode=service_mode,
 				language=language,
+				task=task,
+				prompt=prompt,
+				temperature=temperature,
+				timestamp_granularities=timestamp_granularities,
 				metadata=metadata,
 				file_size=file_size,
 			)
@@ -216,6 +256,14 @@ class AsyncJobs:
 			body["service_mode"] = service_mode
 		if language is not None:
 			body["language"] = language
+		if task is not None:
+			body["task"] = task
+		if prompt is not None:
+			body["prompt"] = prompt
+		if temperature is not None:
+			body["temperature"] = temperature
+		if timestamp_granularities is not None:
+			body["timestamp_granularities"] = timestamp_granularities
 		if type is not None:
 			body["type"] = type
 		if metadata is not None:

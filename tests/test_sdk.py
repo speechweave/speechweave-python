@@ -264,6 +264,118 @@ async def test_async_openai_compat_wait_true_mocked():
 	}
 
 
+def test_openai_compat_forwards_prompt_temperature_timestamp_granularities():
+
+	fake_job = {"id": "job_mock", "status": "completed", "transcript": "hola"}
+	with (
+		patch(
+			"speechweave.namespaces.openai_compat.upload_and_create_job",
+			return_value={"id": "job_mock", "status": "queued"},
+		) as mock_upload,
+		patch(
+			"speechweave.namespaces.openai_compat.finish_compat_job",
+			return_value=fake_job,
+		),
+	):
+		client = SpeechWeave(api_key="sk_test_key")
+		client.audio.transcriptions.create(
+			file=b"audio-bytes",
+			filename="test.mp3",
+			language="es",
+			prompt="SpeechWeave, Acme Corp",
+			temperature=0.2,
+			timestamp_granularities=["word"],
+		)
+
+	assert mock_upload.call_args.kwargs["language"] == "es"
+	assert mock_upload.call_args.kwargs["prompt"] == "SpeechWeave, Acme Corp"
+	assert mock_upload.call_args.kwargs["temperature"] == 0.2
+	assert mock_upload.call_args.kwargs["timestamp_granularities"] == ["word"]
+
+
+def test_openai_compat_response_format_vtt_delegates_to_get_job_formatted():
+
+	fake_job = {"id": "job_mock", "status": "completed", "transcript": "hello"}
+	with (
+		patch(
+			"speechweave.namespaces.openai_compat.upload_and_create_job",
+			return_value={"id": "job_mock", "status": "queued"},
+		),
+		patch(
+			"speechweave.namespaces.openai_compat.finish_compat_job",
+			return_value=fake_job,
+		),
+	):
+		client = SpeechWeave(api_key="sk_test_key")
+		with patch.object(
+			client,
+			"get_job_formatted",
+			return_value="WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n",
+		) as mock_formatted:
+			result = client.audio.transcriptions.create(
+				file=b"audio-bytes",
+				filename="test.mp3",
+				response_format="vtt",
+			)
+
+	mock_formatted.assert_called_once_with("job_mock", "vtt")
+	assert result == "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n"
+
+
+def test_openai_compat_translations_forces_task_translate_and_omits_language():
+
+	fake_job = {"id": "job_mock", "status": "completed", "transcript": "hello world"}
+	with (
+		patch(
+			"speechweave.namespaces.openai_compat.upload_and_create_job",
+			return_value={"id": "job_mock", "status": "queued"},
+		) as mock_upload,
+		patch(
+			"speechweave.namespaces.openai_compat.finish_compat_job",
+			return_value=fake_job,
+		),
+	):
+		client = SpeechWeave(api_key="sk_test_key")
+		result = client.audio.translations.create(
+			file=b"audio-bytes",
+			filename="test.mp3",
+		)
+
+	assert mock_upload.call_args.kwargs["task"] == "translate"
+	assert "language" not in mock_upload.call_args.kwargs
+	assert result == {"text": "hello world", "task": "translate"}
+
+
+@pytest.mark.asyncio
+async def test_async_openai_compat_translations_wait_true_mocked():
+
+	fake_job = {
+		"id": "job_mock",
+		"status": "completed",
+		"transcript": "hello world",
+		"language": "en",
+	}
+	with (
+		patch(
+			"speechweave.namespaces.openai_compat.async_upload_and_create_job",
+			new=AsyncMock(return_value={"id": "job_mock", "status": "queued"}),
+		) as mock_upload,
+		patch(
+			"speechweave.namespaces.openai_compat.async_finish_compat_job",
+			new=AsyncMock(return_value=fake_job),
+		),
+	):
+		async with AsyncSpeechWeave(api_key="sk_test_key") as client:
+			result = await client.audio.translations.create(
+				file=b"audio-bytes",
+				filename="test.mp3",
+				wait=True,
+			)
+
+	assert mock_upload.await_args.kwargs["task"] == "translate"
+	assert result == {"text": "hello world", "task": "translate", "language": "en"}
+
+
 # =====================================================================
 # 3. ERROR HANDLING SECURITY
 # =====================================================================
@@ -546,6 +658,77 @@ def test_list_jobs_passes_query_params():
 	assert result == expected
 
 
+def test_get_job_formatted_returns_raw_text_for_text_plain():
+
+	client = SpeechWeave(api_key="sk_test_key")
+
+	class FakeResponse:
+		status_code = 200
+		text = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n"
+		headers = {"content-type": "text/plain; charset=utf-8"}
+
+	with patch.object(client._client, "request", return_value=FakeResponse()) as request_mock:
+		result = client.get_job_formatted("job_1", "vtt")
+
+	assert result == "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n"
+	call = request_mock.call_args
+	assert call.kwargs.get("params") == {"format": "vtt"}
+
+
+def test_get_job_formatted_returns_parsed_dict_for_verbose_json():
+
+	client = SpeechWeave(api_key="sk_test_key")
+	verbose = {"task": "transcribe", "text": "hello world", "segments": []}
+
+	class FakeResponse:
+		status_code = 200
+		headers = {"content-type": "application/json"}
+
+		def json(self):
+			return verbose
+
+	with patch.object(client._client, "request", return_value=FakeResponse()):
+		result = client.get_job_formatted("job_1", "verbose_json")
+
+	assert result == verbose
+
+
+def test_get_job_formatted_raises_on_409_not_completed():
+
+	client = SpeechWeave(api_key="sk_test_key")
+
+	class FakeResponse:
+		status_code = 409
+		text = '{"error":"Job is not completed yet (status: processing)"}'
+		reason_phrase = "Conflict"
+		headers = {}
+
+		def json(self):
+			return {"error": "Job is not completed yet (status: processing)"}
+
+	with patch.object(client._client, "request", return_value=FakeResponse()):
+		with pytest.raises(SpeechWeaveError) as exc_info:
+			client.get_job_formatted("job_1", "srt")
+
+	assert exc_info.value.status == 409
+
+
+@pytest.mark.asyncio
+async def test_async_get_job_formatted_returns_raw_text():
+
+	async with AsyncSpeechWeave(api_key="sk_test_key") as client:
+
+		class FakeResponse:
+			status_code = 200
+			text = "1\n00:00:00,000 --> 00:00:01,000\nhello\n"
+			headers = {"content-type": "text/plain; charset=utf-8"}
+
+		with patch.object(client._client, "request", new=AsyncMock(return_value=FakeResponse())):
+			result = await client.get_job_formatted("job_1", "srt")
+
+		assert result == "1\n00:00:00,000 --> 00:00:01,000\nhello\n"
+
+
 @pytest.mark.asyncio
 async def test_async_wait_for_job_mocked():
 
@@ -597,7 +780,7 @@ def test_transcribe_file_rejects_oversized_input_before_presign():
 
 	assert exc_info.value.status == 413
 	assert exc_info.value.code == "FILE_TOO_LARGE"
-	# Only the limits lookup happened — no presign, no upload.
+	# Only the limits lookup happened, no presign, no upload.
 	assert len(request_mock.call_args_list) == 1
 	assert "/limits" in str(request_mock.call_args_list[0].args[1])
 	put_mock.assert_not_called()

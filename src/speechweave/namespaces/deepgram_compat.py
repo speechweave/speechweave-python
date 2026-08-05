@@ -34,7 +34,7 @@ class _Prerecorded:
 		file_size: int | None = None,
 	) -> Any:
 		"""
-		Deepgram-shaped prerecorded file transcription — drop-in compatibility wrapper.
+		Deepgram-shaped prerecorded file transcription, drop-in compatibility wrapper.
 		"""
 
 		job = upload_and_create_job(
@@ -64,7 +64,7 @@ class _Prerecorded:
 		language: str | None = None,
 	) -> Any:
 		"""
-		Deepgram-shaped prerecorded URL transcription — drop-in compatibility wrapper.
+		Deepgram-shaped prerecorded URL transcription, drop-in compatibility wrapper.
 		"""
 
 		job = create_job_from_url(
@@ -111,7 +111,7 @@ class _AsyncPrerecorded:
 		wait: bool = True,
 	) -> Any:
 		"""
-		Deepgram-shaped prerecorded file transcription — drop-in compatibility wrapper.
+		Deepgram-shaped prerecorded file transcription, drop-in compatibility wrapper.
 		"""
 
 		job = await async_upload_and_create_job(
@@ -145,7 +145,7 @@ class _AsyncPrerecorded:
 		wait: bool = True,
 	) -> Any:
 		"""
-		Deepgram-shaped prerecorded URL transcription — drop-in compatibility wrapper.
+		Deepgram-shaped prerecorded URL transcription, drop-in compatibility wrapper.
 		"""
 
 		job = await async_create_job_from_url(

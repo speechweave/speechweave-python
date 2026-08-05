@@ -30,7 +30,7 @@ class AssemblyTranscripts:
 		config: dict[str, Any] | None = None,
 	) -> Any:
 		"""
-		AssemblyAI-shaped transcription — drop-in compatibility wrapper.
+		AssemblyAI-shaped transcription, drop-in compatibility wrapper.
 
 		Pass a URL string or binary/file body. Polls to completion.
 		"""
@@ -81,7 +81,7 @@ class AsyncAssemblyTranscripts:
 		wait: bool = True,
 	) -> Any:
 		"""
-		AssemblyAI-shaped transcription — drop-in compatibility wrapper.
+		AssemblyAI-shaped transcription, drop-in compatibility wrapper.
 
 		Pass a URL string or binary/file body.
 		"""

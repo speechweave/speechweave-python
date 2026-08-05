@@ -327,6 +327,10 @@ class AsyncSpeechWeaveClient:
 			"model",
 			"service_mode",
 			"language",
+			"task",
+			"prompt",
+			"temperature",
+			"timestamp_granularities",
 			"metadata",
 		):
 			if key in body and body[key] is not None:
@@ -345,6 +349,37 @@ class AsyncSpeechWeaveClient:
 			job_id: Id from `create_job` / `transcribe_file`.
 		"""
 		return await self.request_json("GET", f"/jobs/{job_id}")
+
+	async def get_job_formatted(
+		self,
+		job_id: str,
+		format: str,
+	) -> Any:
+		"""
+		Fetch a completed job's transcript re-formatted server-side from its stored
+		segments (`GET /v1/jobs/:id?format=`), the same formatting the sync
+		OpenAI-compat proxy uses, available for jobs submitted through the native
+		async flow. Raises `SpeechWeaveError` (409) if the job isn't completed yet.
+
+		Args:
+			format: 'text' | 'srt' | 'vtt' return a raw string; 'verbose_json' returns a dict.
+		"""
+
+		response = await self.raw_request("GET", f"/jobs/{job_id}", params={"format": format})
+
+		if response.status_code >= 400:
+			try:
+				body = response.json()
+				msg = str(body.get("error") or response.text)
+			except Exception:
+				msg = response.text or response.reason_phrase
+			raise SpeechWeaveError(msg, response.status_code, str(response.status_code))
+
+		content_type = response.headers.get("content-type", "")
+		if "application/json" in content_type:
+			return response.json()
+
+		return response.text
 
 	async def list_jobs(
 		self,
@@ -394,6 +429,10 @@ class AsyncSpeechWeaveClient:
 		model: str | None = None,
 		service_mode: str | None = None,
 		language: str | None = None,
+		task: str | None = None,
+		prompt: str | None = None,
+		temperature: float | None = None,
+		timestamp_granularities: list[str] | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
 	) -> dict[str, Any]:
@@ -413,7 +452,11 @@ class AsyncSpeechWeaveClient:
 			filename: Defaults to `audio.bin`.
 			content_type: Inferred from filename's extension when omitted; falls back to
 				`application/octet-stream`.
-			language: Two-letter ISO code (e.g. 'en', 'es').
+			language: Two-letter ISO code (e.g. 'en', 'es'). Ignored when task is 'translate'.
+			task: 'transcribe' (default) or 'translate' (translate to English).
+			prompt: Custom vocabulary/style hint for the first ~30s window.
+			temperature: Decoding temperature, clamped to [0, 1] server-side.
+			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: `Content-Length` when the body cannot be measured.
 		"""
 
@@ -441,6 +484,14 @@ class AsyncSpeechWeaveClient:
 			body["service_mode"] = service_mode
 		if language:
 			body["language"] = language
+		if task:
+			body["task"] = task
+		if prompt:
+			body["prompt"] = prompt
+		if temperature is not None:
+			body["temperature"] = temperature
+		if timestamp_granularities:
+			body["timestamp_granularities"] = timestamp_granularities
 		if metadata:
 			body["metadata"] = metadata
 

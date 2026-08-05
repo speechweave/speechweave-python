@@ -4,7 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/speechweave.svg)](https://pypi.org/project/speechweave/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The native Python SDK for SpeechWeave — background job polling, presigned uploads, and webhook verification. Python 3.10+.
+The native Python SDK for SpeechWeave: background job polling, presigned uploads, and webhook verification. Python 3.10+.
 
 **Docs:** [speechweave.com/docs](https://speechweave.com/docs) · [API reference](https://speechweave.com/docs/api)
 
@@ -38,6 +38,23 @@ print(done["transcript"])
 ```
 
 `jobs.create` accepts a local path string or an open binary file. For URL input, cancel, and other job operations, see the [API reference](https://speechweave.com/docs/api).
+
+## Translation & formatted transcripts
+
+Translate audio to English text, or fetch a completed job's transcript formatted as `text`, `srt`, `vtt`, or `verbose_json` (word/segment timestamps):
+
+```python
+from speechweave import SpeechWeave, wait_for_job
+
+sw = SpeechWeave()
+
+job = sw.jobs.create(file="./spanish_podcast.mp3", task="translate")
+done = wait_for_job(sw, job["id"])
+print(done["transcript"])  # English text, regardless of the source language
+
+# Once a job has completed, fetch its transcript in another format
+srt = sw.get_job_formatted(job["id"], format="srt")
+```
 
 ## Handling buffers & streams
 
@@ -107,25 +124,22 @@ except SpeechWeaveError as e:
 	print(e.code)
 	print(e.error_type)  # OpenAI-style category, e.g. "insufficient_quota"
 	# Prepaid wallet / spend caps: HTTP 402 with codes like INSUFFICIENT_BALANCE,
-	# WALLET_EMPTY, USER_SPEND_CAP_REACHED, CHECKOUT_REQUIRED,
-	# PLATFORM_SPEND_CAP_REACHED.
-	if e.status == 402:
-		if e.code == "PLATFORM_SPEND_CAP_REACHED":
-			# Monthly ceiling for your account tier.
-			print("Monthly account limit reached; do not retry until next month.")
-		else:
-			print("Top up the wallet or raise spend caps, then retry.")
+	# WALLET_EMPTY, USER_SPEND_CAP_REACHED, CHECKOUT_REQUIRED, PLATFORM_SPEND_CAP_REACHED.
+	if e.status == 402 and e.code == "PLATFORM_SPEND_CAP_REACHED":
+		print("Monthly account limit reached; do not retry until next month.")
+	elif e.status == 402:
+		print("Top up the wallet or raise spend caps, then retry.")
 	# HTTP 403 with code EMAIL_UNVERIFIED: the account owning this API key hasn't
 	# verified its email yet. Verify it, then retry -- the key itself is still valid.
-	if e.status == 403 and e.code == "EMAIL_UNVERIFIED":
+	elif e.status == 403 and e.code == "EMAIL_UNVERIFIED":
 		print("Verify the account email before uploading or creating jobs.")
 ```
 
 ## Configuration
 
-- `api_key` — or set `SPEECHWEAVE_API_KEY`
-- `base_url` — defaults to `https://api.speechweave.com/v1`
-- `timeout` — httpx timeout in seconds (default `120`)
+- `api_key`, or set `SPEECHWEAVE_API_KEY`
+- `base_url`, defaults to `https://api.speechweave.com/v1`
+- `timeout`, httpx timeout in seconds (default `120`)
 
 ## Compatibility & Migration
 
@@ -150,11 +164,13 @@ with open("clip.mp3", "rb") as f:
 print(result["text"])
 ```
 
+Uploads go straight to storage the same way `jobs.create` does, so this supports files up to the same **250 MB** self-serve limit.
+
 More examples: [OpenAI](https://speechweave.com/docs/migration/openai) · [Deepgram](https://speechweave.com/docs/migration/deepgram) · [AssemblyAI](https://speechweave.com/docs/migration/assemblyai)
 
 ### Migrating from OpenAI
 
-You don't need this SDK for a quick swap — use the official `openai` package and point it at SpeechWeave:
+You don't need this SDK for a quick swap, use the official `openai` package and point it at SpeechWeave:
 
 ```python
 from openai import OpenAI
@@ -169,5 +185,9 @@ with open("clip.mp3", "rb") as f:
 
 print(result.text)
 ```
+
+`client.audio.translations.create(model="core", file=f)` works the same way for translating audio into English text; OpenAI's translations endpoint has no `language` parameter, the source language is always auto-detected.
+
+> **Upload size:** this path posts through the same wire format as the official OpenAI client, so it's capped at **90 MB** per file to stay under standard upload limits. For anything larger, switch to `client.audio.transcriptions.create(...)` from this SDK's drop-in helpers above: same call shape, and it unlocks the full 250 MB limit because uploads go straight to storage instead.
 
 OpenAI model names like `whisper-1` are aliased to `core` on our backend. See the [OpenAI migration guide](https://speechweave.com/docs/migration/openai).

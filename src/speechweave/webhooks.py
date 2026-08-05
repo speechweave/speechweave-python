@@ -16,7 +16,7 @@ def verify_webhook(
 	tolerance_sec: int = 300,
 ) -> VerifyWebhookResult:
 	"""
-	Verify `SpeechWeave-Signature` header (Stripe-style: `t=unix,v1=hex` — may include multiple `v1=` during secret rotation).
+	Verify `SpeechWeave-Signature` header (Stripe-style: `t=unix,v1=hex`, may include multiple `v1=` during secret rotation).
 
 	Args:
 		secret: Active webhook signing secret, or `[active, previous]` during a rotation window.

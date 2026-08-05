@@ -46,11 +46,11 @@ def _job_language(job: dict[str, Any]) -> str | None:
 	return text
 
 
-def shape_openai_response(job: dict[str, Any]) -> dict[str, Any]:
+def shape_openai_response(job: dict[str, Any], *, task: str = "transcribe") -> dict[str, Any]:
 
 	response: dict[str, Any] = {
 		"text": _job_text(job),
-		"task": "transcribe",
+		"task": task,
 	}
 	duration = _job_duration(job)
 	if duration is not None:
@@ -134,6 +134,10 @@ def upload_and_create_job(
 	content_type: str | None = None,
 	model: str | None = None,
 	language: str | None = None,
+	task: str | None = None,
+	prompt: str | None = None,
+	temperature: float | None = None,
+	timestamp_granularities: list[str] | None = None,
 	service_mode: str = "synchronous",
 	metadata: dict[str, Any] | None = None,
 	file_size: int | None = None,
@@ -164,6 +168,14 @@ def upload_and_create_job(
 		body["model"] = model
 	if language is not None:
 		body["language"] = language
+	if task is not None:
+		body["task"] = task
+	if prompt is not None:
+		body["prompt"] = prompt
+	if temperature is not None:
+		body["temperature"] = temperature
+	if timestamp_granularities is not None:
+		body["timestamp_granularities"] = timestamp_granularities
 	if metadata is not None:
 		body["metadata"] = metadata
 
@@ -230,6 +242,10 @@ async def async_upload_and_create_job(
 	content_type: str | None = None,
 	model: str | None = None,
 	language: str | None = None,
+	task: str | None = None,
+	prompt: str | None = None,
+	temperature: float | None = None,
+	timestamp_granularities: list[str] | None = None,
 	service_mode: str = "synchronous",
 	metadata: dict[str, Any] | None = None,
 	file_size: int | None = None,
@@ -260,6 +276,14 @@ async def async_upload_and_create_job(
 		body["model"] = model
 	if language is not None:
 		body["language"] = language
+	if task is not None:
+		body["task"] = task
+	if prompt is not None:
+		body["prompt"] = prompt
+	if temperature is not None:
+		body["temperature"] = temperature
+	if timestamp_granularities is not None:
+		body["timestamp_granularities"] = timestamp_granularities
 	if metadata is not None:
 		body["metadata"] = metadata
 

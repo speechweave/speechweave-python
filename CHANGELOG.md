@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0]
+
+### Added
+- **Translation task:** Added `task="translate"` to `transcribe_file`, `create_job`, and `upload_and_create_job` to translate audio to English text.
+- **OpenAI-compat translations:** Added `client.audio.translations.create(...)` to mirror the OpenAI SDK's transcription translation flow.
+- **Transcript formatting options:** Added support for `prompt`, `temperature`, and `timestamp_granularities` when creating jobs.
+- **Formatted fetches:** Added `client.get_job_formatted(job_id, format)` to fetch a completed transcript as `text`, `srt`, `vtt`, or `verbose_json`. This also powers `response_format` resolution in the OpenAI-compat helper.
+- **New types:** Exported `TranscriptionTask`, `TranscriptionResponseFormat`, `TimestampGranularity`, `TranscriptSegment`, `TranscriptWord`, and `VerboseTranscript`.
+
 ## [1.3.0]
 
 ### Added
