@@ -282,6 +282,7 @@ class SpeechWeaveClient:
 		*,
 		filename: str,
 		content_type: str,
+		content_length: int | None = None,
 	) -> dict[str, Any]:
 		"""
 		Request a short-lived PUT URL and `object_key` for direct upload.
@@ -289,13 +290,14 @@ class SpeechWeaveClient:
 		Args:
 			filename: Original name (used in the storage key).
 			content_type: MIME type that must match the subsequent PUT.
+			content_length: Declared upload size in bytes (when known).
 		"""
 
-		return self.request_json(
-			"POST",
-			"/uploads",
-			{"filename": filename, "content_type": content_type},
-		)
+		body: dict[str, Any] = {"filename": filename, "content_type": content_type}
+		if content_length is not None:
+			body["content_length"] = content_length
+
+		return self.request_json("POST", "/uploads", body)
 
 	def put_presigned_url(
 		self,
@@ -487,14 +489,13 @@ class SpeechWeaveClient:
 		"""
 
 		content_type = content_type or infer_content_type(filename)
+		size_bytes = _content_length(file_obj, file_size=file_size)
 		# Gate before presign so an oversized file costs neither a presign nor an upload.
-		self.ensure_within_limits(
-			_content_length(file_obj, file_size=file_size),
-			service_mode,
-		)
+		self.ensure_within_limits(size_bytes, service_mode)
 		presign = self.presign_upload(
 			filename=filename,
 			content_type=content_type,
+			content_length=size_bytes,
 		)
 		self.put_presigned_url(
 			presign["upload_url"],

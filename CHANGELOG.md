@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5.0]
+
+### Added
+- **`content_length` on presign:** `presign_upload` (sync and async) accepts an optional `content_length` (bytes), and `transcribe_file`/`upload_and_create_job` pass it automatically when the body size is known locally.
+
 ## [1.4.0]
 
 ### Added

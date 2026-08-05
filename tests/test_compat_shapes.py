@@ -185,6 +185,7 @@ def test_upload_and_create_job_infers_content_type_from_filename():
 	client.presign_upload.assert_called_once_with(
 		filename="note.opus",
 		content_type="audio/opus",
+		content_length=5,
 	)
 	assert client.put_presigned_url.call_args.args[2] == "audio/opus"
 
@@ -208,6 +209,7 @@ def test_upload_and_create_job_explicit_content_type_wins():
 	client.presign_upload.assert_called_once_with(
 		filename="note.opus",
 		content_type="audio/custom",
+		content_length=5,
 	)
 
 
@@ -233,4 +235,5 @@ async def test_async_upload_and_create_job_infers_content_type_from_filename():
 	client.presign_upload.assert_awaited_once_with(
 		filename="call.flac",
 		content_type="audio/flac",
+		content_length=5,
 	)

@@ -144,14 +144,13 @@ def upload_and_create_job(
 ) -> dict[str, Any]:
 
 	content_type = content_type or infer_content_type(filename)
+	size_bytes = _content_length(data, file_size=file_size)
 	# Gate before presign so an oversized file costs neither a presign nor an upload.
-	client.ensure_within_limits(
-		_content_length(data, file_size=file_size),
-		service_mode,
-	)
+	client.ensure_within_limits(size_bytes, service_mode)
 	presign = client.presign_upload(
 		filename=filename,
 		content_type=content_type,
+		content_length=size_bytes,
 	)
 	client.put_presigned_url(
 		presign["upload_url"],
@@ -252,14 +251,13 @@ async def async_upload_and_create_job(
 ) -> dict[str, Any]:
 
 	content_type = content_type or infer_content_type(filename)
+	size_bytes = _content_length(data, file_size=file_size)
 	# Gate before presign so an oversized file costs neither a presign nor an upload.
-	await client.ensure_within_limits(
-		_content_length(data, file_size=file_size),
-		service_mode,
-	)
+	await client.ensure_within_limits(size_bytes, service_mode)
 	presign = await client.presign_upload(
 		filename=filename,
 		content_type=content_type,
+		content_length=size_bytes,
 	)
 	await client.put_presigned_url(
 		presign["upload_url"],
