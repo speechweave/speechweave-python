@@ -21,7 +21,15 @@ echo "Releasing v$VERSION...";
 echo "Running tests, linting, and dependency audit";
 pytest;
 ruff check .;
-pip-audit;
+
+echo "Auditing dependencies in an isolated environment (excludes unrelated packages in your dev environment)";
+AUDIT_TMP="$(mktemp -d)";
+trap 'rm -rf "$AUDIT_TMP"' EXIT;
+python3 -m venv "$AUDIT_TMP/venv";
+"$AUDIT_TMP/venv/bin/pip" install --quiet --upgrade pip;
+"$AUDIT_TMP/venv/bin/pip" install --quiet .;
+AUDIT_SITE_PACKAGES="$("$AUDIT_TMP/venv/bin/python" -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")";
+pip-audit --path "$AUDIT_SITE_PACKAGES";
 
 # Update the version.py file
 VERSION_FILE="src/speechweave/version.py";
