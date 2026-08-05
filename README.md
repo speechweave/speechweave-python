@@ -130,7 +130,7 @@ except SpeechWeaveError as e:
 	elif e.status == 402:
 		print("Top up the wallet or raise spend caps, then retry.")
 	# HTTP 403 with code EMAIL_UNVERIFIED: the account owning this API key hasn't
-	# verified its email yet. Verify it, then retry -- the key itself is still valid.
+	# verified its email yet. Verify it, then retry; the key itself is still valid.
 	elif e.status == 403 and e.code == "EMAIL_UNVERIFIED":
 		print("Verify the account email before uploading or creating jobs.")
 ```

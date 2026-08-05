@@ -18,9 +18,10 @@ VERSION=${VERSION#v};
 
 echo "Releasing v$VERSION...";
 
-echo "Running tests and linting";
+echo "Running tests, linting, and dependency audit";
 pytest;
 ruff check .;
+pip-audit;
 
 # Update the version.py file
 VERSION_FILE="src/speechweave/version.py";

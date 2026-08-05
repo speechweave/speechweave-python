@@ -36,6 +36,9 @@ jobs:
       - name: Test
         run: pytest
 
+      - name: Dependency audit
+        run: pip-audit
+
       - name: Build distributions
         run: python -m build
 
