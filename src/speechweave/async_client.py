@@ -312,7 +312,7 @@ class AsyncSpeechWeaveClient:
 		Create a transcription job from an uploaded object or remote URL.
 
 		Provide one of `object_key`, `input_url`, or `audio_url`. `type` defaults to
-		`transcription`. Omitting `service_mode` leaves the API default (deferred).
+		`transcription`. Omitting `service_mode` leaves the API default (synchronous).
 		Synchronous has its own size cap, at or below the account cap, see `get_limits`.
 
 		Args:
@@ -443,7 +443,7 @@ class AsyncSpeechWeaveClient:
 
 		Returns the create ack (no transcript); poll `get_job` or `async_wait_for_job`.
 		Sync file objects are streamed off-thread. Omitting `service_mode` leaves
-		the API default (deferred).
+		the API default (synchronous).
 
 		Files whose size is measurable are checked against the account's limits
 		(see `get_limits`) before uploading, and rejected locally with a 413

@@ -43,7 +43,7 @@ class Jobs:
 
 		Pass `file` (path or binary) to presign-upload then create. Otherwise
 		pass one of `object_key`, `input_url`, or `audio_url` (no upload).
-		Omitting `service_mode` leaves the API default (deferred).
+		Omitting `service_mode` leaves the API default (synchronous).
 
 		Args:
 			file: Local path or open binary file. Mutually exclusive with URL keys.
@@ -196,7 +196,7 @@ class AsyncJobs:
 
 		Pass `file` (path or binary) to presign-upload then create. Otherwise
 		pass one of `object_key`, `input_url`, or `audio_url` (no upload).
-		Omitting `service_mode` leaves the API default (deferred).
+		Omitting `service_mode` leaves the API default (synchronous).
 
 		Args:
 			file: Local path or open binary file. Mutually exclusive with URL keys.
