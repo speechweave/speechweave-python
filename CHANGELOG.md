@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.0]
+
+### Changed
+
+- **Public `service_mode` is now `standard`.** Omitting it on job create uses the higher-priority queue. `synchronous` remains an accepted alias. Pass `service_mode="deferred"` for the cheaper background queue. The local upload size gate applies to omitted / `standard` / `synchronous`, not only the old name.
+
 ## [1.6.0]
 
 ### Changed

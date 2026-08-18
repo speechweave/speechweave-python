@@ -45,6 +45,8 @@ path = "src/speechweave/version.py"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Prefer local src over a globally installed speechweave (e.g. conda site-packages).
+pythonpath = ["src"]
 
 [tool.ruff]
 # Relax the line length for better readability (default is 88)

@@ -138,7 +138,7 @@ def upload_and_create_job(
 	prompt: str | None = None,
 	temperature: float | None = None,
 	timestamp_granularities: list[str] | None = None,
-	service_mode: str = "synchronous",
+	service_mode: str = "standard",
 	metadata: dict[str, Any] | None = None,
 	file_size: int | None = None,
 ) -> dict[str, Any]:
@@ -187,7 +187,7 @@ def create_job_from_url(
 	url: str,
 	model: str | None = None,
 	language: str | None = None,
-	service_mode: str = "synchronous",
+	service_mode: str = "standard",
 	metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
 
@@ -245,7 +245,7 @@ async def async_upload_and_create_job(
 	prompt: str | None = None,
 	temperature: float | None = None,
 	timestamp_granularities: list[str] | None = None,
-	service_mode: str = "synchronous",
+	service_mode: str = "standard",
 	metadata: dict[str, Any] | None = None,
 	file_size: int | None = None,
 ) -> dict[str, Any]:
@@ -294,7 +294,7 @@ async def async_create_job_from_url(
 	url: str,
 	model: str | None = None,
 	language: str | None = None,
-	service_mode: str = "synchronous",
+	service_mode: str = "standard",
 	metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
 

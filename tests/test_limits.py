@@ -22,10 +22,15 @@ def test_raises_over_account_cap():
 
 
 def test_points_at_deferred_when_only_the_sync_cap_is_exceeded():
-	with pytest.raises(SpeechWeaveError) as exc_info:
-		check_within_limits(600, _LIMITS, "synchronous")
+	for mode in (None, "standard", "synchronous"):
+		with pytest.raises(SpeechWeaveError) as exc_info:
+			check_within_limits(600, _LIMITS, mode)
 
-	assert "deferred" in str(exc_info.value)
+		assert "deferred" in str(exc_info.value)
+
+
+def test_deferred_skips_the_stricter_standard_cap():
+	assert check_within_limits(600, _LIMITS, "deferred") is None
 
 
 def test_does_not_suggest_deferred_when_the_account_cap_is_the_binding_one():

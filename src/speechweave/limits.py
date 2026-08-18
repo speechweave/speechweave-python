@@ -7,6 +7,15 @@ from speechweave.errors import SpeechWeaveError
 #: How long `GET /v1/limits` is reused before refetching.
 LIMITS_CACHE_SECONDS = 300.0
 
+_DEFERRED_ALIASES = frozenset({"deferred", "async", "asynchronous", "delayed", "queue", "queued"})
+
+
+def applies_sync_size_cap(service_mode: str | None) -> bool:
+	"""True when the local upload gate should apply `sync_max_bytes`."""
+	if service_mode is None or not str(service_mode).strip():
+		return True
+	return str(service_mode).strip().lower() not in _DEFERRED_ALIASES
+
 
 def check_within_limits(
 	size_bytes: int | None,
@@ -22,7 +31,8 @@ def check_within_limits(
 	Args:
 		size_bytes: Measured body length, or None when it could not be measured.
 		limits: Payload from `GET /v1/limits`, or None if the lookup failed.
-		service_mode: Applies the stricter synchronous cap when 'synchronous'.
+		service_mode: Applies the stricter standard-mode cap when omitted, `standard`,
+			or the `synchronous` alias.
 
 	Raises:
 		SpeechWeaveError: 413 with code `FILE_TOO_LARGE`.
@@ -34,14 +44,14 @@ def check_within_limits(
 	sync_max = limits.get("sync_max_bytes")
 
 	if (
-		service_mode == "synchronous"
+		applies_sync_size_cap(service_mode)
 		and isinstance(sync_max, int)
 		and isinstance(max_input, int)
 		and size_bytes > sync_max
 		and sync_max < max_input
 	):
 		raise SpeechWeaveError(
-			f"File is {size_bytes} bytes, over the {sync_max} byte synchronous limit. "
+			f"File is {size_bytes} bytes, over the {sync_max} byte standard-mode limit. "
 			"Use service_mode 'deferred' for files this size.",
 			413,
 			"FILE_TOO_LARGE",
