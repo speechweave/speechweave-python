@@ -852,6 +852,95 @@ async def test_async_wait_for_job_does_not_retry_speechweave_error():
 	assert client.get_job.call_count == 1
 
 
+def test_wait_for_job_retries_429_using_retry_after_then_succeeds():
+
+	rate_limit_error = SpeechWeaveError("rate_limit_exceeded", 429, "GENERAL_API_RATE_LIMIT", retry_after=0.001)
+	client = Mock()
+	client.get_job = Mock(side_effect=[rate_limit_error, {"id": "job_1", "status": "completed"}])
+
+	with patch("speechweave.polling.time.sleep") as mock_sleep:
+		result = wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert result["status"] == "completed"
+	assert client.get_job.call_count == 2
+	# Jittered to 50-100% of retry_after, not the exact value.
+	(slept,), _ = mock_sleep.call_args
+	assert 0.0005 <= slept <= 0.001
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_job_retries_429_using_retry_after_then_succeeds():
+
+	rate_limit_error = SpeechWeaveError("rate_limit_exceeded", 429, "GENERAL_API_RATE_LIMIT", retry_after=0.001)
+	client = AsyncMock()
+	client.get_job = AsyncMock(side_effect=[rate_limit_error, {"id": "job_1", "status": "completed"}])
+
+	with patch("speechweave.polling.asyncio.sleep", new=AsyncMock()) as mock_sleep:
+		result = await async_wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert result["status"] == "completed"
+	assert client.get_job.call_count == 2
+	(slept,), _ = mock_sleep.call_args
+	assert 0.0005 <= slept <= 0.001
+
+
+def test_wait_for_job_clamps_retry_after_to_remaining_deadline():
+
+	# retry_after (300s) far exceeds the whole timeout_sec (0.05s) -- as it will whenever the
+	# rate-limit window is comparable to or larger than the caller's own timeout. The sleep
+	# must be clamped down to (at most) what's left, not eat the caller's entire budget.
+	rate_limit_error = SpeechWeaveError("rate_limit_exceeded", 429, "GENERAL_API_RATE_LIMIT", retry_after=300)
+	client = Mock()
+	client.get_job = Mock(side_effect=rate_limit_error)
+
+	real_sleep_calls = []
+
+	def fake_sleep(sec):
+		real_sleep_calls.append(sec)
+
+	with patch("speechweave.polling.time.sleep", side_effect=fake_sleep):
+		with pytest.raises(SpeechWeaveError) as exc_info:
+			wait_for_job(client, "job_1", timeout_sec=0.05, poll_sec=0.01)
+
+	assert exc_info.value.code == "JOB_WAIT_TIMEOUT"
+	assert all(sec <= 0.05 for sec in real_sleep_calls)
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_job_clamps_retry_after_to_remaining_deadline():
+
+	rate_limit_error = SpeechWeaveError("rate_limit_exceeded", 429, "GENERAL_API_RATE_LIMIT", retry_after=300)
+	client = AsyncMock()
+	client.get_job = AsyncMock(side_effect=rate_limit_error)
+
+	real_sleep_calls = []
+
+	async def fake_sleep(sec):
+		real_sleep_calls.append(sec)
+
+	with patch("speechweave.polling.asyncio.sleep", side_effect=fake_sleep):
+		with pytest.raises(SpeechWeaveError) as exc_info:
+			await async_wait_for_job(client, "job_1", timeout_sec=0.05, poll_sec=0.01)
+
+	assert exc_info.value.code == "JOB_WAIT_TIMEOUT"
+	assert all(sec <= 0.05 for sec in real_sleep_calls)
+
+
+def test_wait_for_job_does_not_count_429_against_max_consecutive_network_errors():
+
+	rate_limit_error = SpeechWeaveError("rate_limit_exceeded", 429, "GENERAL_API_RATE_LIMIT")
+	client = Mock()
+	client.get_job = Mock(
+		side_effect=[rate_limit_error, rate_limit_error, rate_limit_error, {"id": "job_1", "status": "completed"}]
+	)
+
+	with patch("speechweave.polling.time.sleep"):
+		result = wait_for_job(client, "job_1", poll_sec=0.01, max_consecutive_network_errors=1)
+
+	assert result["status"] == "completed"
+	assert client.get_job.call_count == 4
+
+
 # =====================================================================
 # 5. UPLOAD SIZE GATE
 # =====================================================================
