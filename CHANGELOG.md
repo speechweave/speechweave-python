@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.1]
+
+### Fixed
+
+- **`wait_for_job` / `async_wait_for_job` no longer fail permanently on a single transient network error.** A dropped connection or timeout during a status poll is now retried (using the same poll interval) up to `max_consecutive_network_errors` (default 5) times before giving up, instead of immediately raising even though the job was still running normally. A real API error response is still raised immediately, unretried.
+
 ## [1.7.0]
 
 ### Changed

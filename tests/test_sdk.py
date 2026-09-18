@@ -1,7 +1,7 @@
 import io
 import os
 import struct
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from speechweave import (
@@ -9,6 +9,7 @@ from speechweave import (
 	SpeechWeave,
 	SpeechWeaveError,
 	async_wait_for_job,
+	wait_for_job,
 )
 
 
@@ -745,6 +746,110 @@ async def test_async_wait_for_job_mocked():
 
 	assert result["status"] == "completed"
 	assert result["transcript"] == "done"
+
+
+def test_wait_for_job_mocked():
+
+	client = Mock()
+	client.get_job = Mock(
+		side_effect=[
+			{"id": "job_1", "status": "queued"},
+			{"id": "job_1", "status": "completed", "transcript": "done"},
+		]
+	)
+
+	with patch("speechweave.polling.time.sleep"):
+		result = wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert result["status"] == "completed"
+	assert result["transcript"] == "done"
+
+
+def test_wait_for_job_retries_network_error_then_succeeds():
+
+	client = Mock()
+	client.get_job = Mock(
+		side_effect=[
+			ConnectionError("boom"),
+			{"id": "job_1", "status": "completed", "transcript": "done"},
+		]
+	)
+
+	with patch("speechweave.polling.time.sleep"):
+		result = wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert result["status"] == "completed"
+	assert client.get_job.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_job_retries_network_error_then_succeeds():
+
+	client = AsyncMock()
+	client.get_job = AsyncMock(
+		side_effect=[
+			ConnectionError("boom"),
+			{"id": "job_1", "status": "completed", "transcript": "done"},
+		]
+	)
+
+	with patch("speechweave.polling.asyncio.sleep", new=AsyncMock()):
+		result = await async_wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert result["status"] == "completed"
+	assert client.get_job.call_count == 2
+
+
+def test_wait_for_job_gives_up_after_max_consecutive_network_errors():
+
+	client = Mock()
+	client.get_job = Mock(side_effect=ConnectionError("boom"))
+
+	with patch("speechweave.polling.time.sleep"):
+		with pytest.raises(ConnectionError):
+			wait_for_job(client, "job_1", poll_sec=0.01, max_consecutive_network_errors=2)
+
+	assert client.get_job.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_job_gives_up_after_max_consecutive_network_errors():
+
+	client = AsyncMock()
+	client.get_job = AsyncMock(side_effect=ConnectionError("boom"))
+
+	with patch("speechweave.polling.asyncio.sleep", new=AsyncMock()):
+		with pytest.raises(ConnectionError):
+			await async_wait_for_job(client, "job_1", poll_sec=0.01, max_consecutive_network_errors=2)
+
+	assert client.get_job.call_count == 3
+
+
+def test_wait_for_job_does_not_retry_speechweave_error():
+
+	api_error = SpeechWeaveError("job not found", 404, "NOT_FOUND")
+	client = Mock()
+	client.get_job = Mock(side_effect=api_error)
+
+	with patch("speechweave.polling.time.sleep"):
+		with pytest.raises(SpeechWeaveError):
+			wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert client.get_job.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_job_does_not_retry_speechweave_error():
+
+	api_error = SpeechWeaveError("job not found", 404, "NOT_FOUND")
+	client = AsyncMock()
+	client.get_job = AsyncMock(side_effect=api_error)
+
+	with patch("speechweave.polling.asyncio.sleep", new=AsyncMock()):
+		with pytest.raises(SpeechWeaveError):
+			await async_wait_for_job(client, "job_1", poll_sec=0.01)
+
+	assert client.get_job.call_count == 1
 
 
 # =====================================================================
