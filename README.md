@@ -133,6 +133,11 @@ except SpeechWeaveError as e:
 	# verified its email yet. Verify it, then retry; the key itself is still valid.
 	elif e.status == 403 and e.code == "EMAIL_UNVERIFIED":
 		print("Verify the account email before uploading or creating jobs.")
+	# HTTP 409 with code METADATA_ONLY_REQUIRES_WEBHOOK: the workspace has
+	# metadata-only retention enabled but no enabled webhook to deliver the
+	# transcript to. Add or re-enable a webhook, then retry.
+	elif e.status == 409 and e.code == "METADATA_ONLY_REQUIRES_WEBHOOK":
+		print("Add an enabled webhook, or disable metadata-only retention, then retry.")
 ```
 
 ## Configuration
@@ -186,7 +191,7 @@ with open("clip.mp3", "rb") as f:
 print(result.text)
 ```
 
-`client.audio.translations.create(model="core", file=f)` works the same way for translating audio into English text; OpenAI's translations endpoint has no `language` parameter, the source language is always auto-detected.
+`client.audio.translations.create(model="core", file=f)` works the same way for translating audio into English text. OpenAI's translations endpoint has no `language` parameter, the source language is always auto-detected.
 
 > **Upload size:** this path posts through the same wire format as the official OpenAI client, so it's capped at **90 MB** per file to stay under standard upload limits. For anything larger, switch to `client.audio.transcriptions.create(...)` from this SDK's drop-in helpers above: same call shape, and it unlocks the full 250 MB limit because uploads go straight to storage instead.
 
