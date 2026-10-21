@@ -37,6 +37,7 @@ class Jobs:
 		type: str | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
+		idempotency_key: str | None = None,
 	) -> dict[str, Any]:
 		"""
 		Create a job from a local file or a remote URL / object_key.
@@ -55,6 +56,7 @@ class Jobs:
 			temperature: Decoding temperature, clamped to [0, 1] server-side.
 			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: Content-Length when a stream body cannot be measured.
+			idempotency_key: Optional `Idempotency-Key` (1 to 255 printable ASCII characters, no spaces).
 		"""
 
 		if file is not None:
@@ -73,6 +75,7 @@ class Jobs:
 						timestamp_granularities=timestamp_granularities,
 						metadata=metadata,
 						file_size=file_size,
+						idempotency_key=idempotency_key,
 					)
 
 			return self._client.transcribe_file(
@@ -88,6 +91,7 @@ class Jobs:
 				timestamp_granularities=timestamp_granularities,
 				metadata=metadata,
 				file_size=file_size,
+				idempotency_key=idempotency_key,
 			)
 
 		body: dict[str, Any] = {}
@@ -116,7 +120,7 @@ class Jobs:
 		if metadata is not None:
 			body["metadata"] = metadata
 
-		return self._client.create_job(body)
+		return self._client.create_job(body, idempotency_key=idempotency_key)
 
 	def get(
 		self,
@@ -162,7 +166,7 @@ class Jobs:
 
 class AsyncJobs:
 	"""
-	Async native jobs API: create / get / list / cancel.
+	asyncio native jobs API: create / get / list / cancel.
 	"""
 
 	def __init__(
@@ -190,6 +194,7 @@ class AsyncJobs:
 		type: str | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
+		idempotency_key: str | None = None,
 	) -> dict[str, Any]:
 		"""
 		Create a job from a local file or a remote URL / object_key.
@@ -208,6 +213,7 @@ class AsyncJobs:
 			temperature: Decoding temperature, clamped to [0, 1] server-side.
 			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: Content-Length when a stream body cannot be measured.
+			idempotency_key: Optional `Idempotency-Key` (1 to 255 printable ASCII characters, no spaces).
 		"""
 
 		if file is not None:
@@ -226,6 +232,7 @@ class AsyncJobs:
 						timestamp_granularities=timestamp_granularities,
 						metadata=metadata,
 						file_size=file_size,
+						idempotency_key=idempotency_key,
 					)
 
 			return await self._client.transcribe_file(
@@ -241,6 +248,7 @@ class AsyncJobs:
 				timestamp_granularities=timestamp_granularities,
 				metadata=metadata,
 				file_size=file_size,
+				idempotency_key=idempotency_key,
 			)
 
 		body: dict[str, Any] = {}
@@ -269,7 +277,7 @@ class AsyncJobs:
 		if metadata is not None:
 			body["metadata"] = metadata
 
-		return await self._client.create_job(body)
+		return await self._client.create_job(body, idempotency_key=idempotency_key)
 
 	async def get(
 		self,

@@ -8,10 +8,11 @@ from typing import Any, BinaryIO, Mapping, MutableMapping
 
 import httpx
 
-from speechweave.client import UploadBody, _content_length, _upload_headers
+from speechweave.client import UploadBody, _content_length, _upload_headers, assert_valid_idempotency_key
 from speechweave.errors import SpeechWeaveError
 from speechweave.limits import LIMITS_CACHE_SECONDS, check_within_limits
 from speechweave.mime import infer_content_type
+from speechweave.polling import async_wait_for_job
 from speechweave.version import __version__
 
 _UPLOAD_CHUNK_SIZE = 64 * 1024
@@ -43,7 +44,7 @@ async def _async_upload_content(data: UploadBody) -> bytes | AsyncIterator[bytes
 
 class AsyncSpeechWeaveClient:
 	"""
-	Async SpeechWeave `/v1` client (presign, jobs, uploads).
+	asyncio SpeechWeave `/v1` client (presign, jobs, uploads).
 	"""
 
 	def __init__(
@@ -59,7 +60,7 @@ class AsyncSpeechWeaveClient:
 			api_key: Falls back to `SPEECHWEAVE_API_KEY`. Raises if neither is set.
 			base_url: Defaults to `https://api.speechweave.com/v1`.
 			timeout: httpx timeout in seconds when constructing a new client.
-			client: Injected `httpx.AsyncClient`; caller owns `aclose` if provided.
+			client: Injected `httpx.AsyncClient`. Caller owns `aclose` if provided.
 		"""
 
 		self.api_key = api_key or os.environ.get("SPEECHWEAVE_API_KEY") or ""
@@ -120,6 +121,7 @@ class AsyncSpeechWeaveClient:
 		path: str,
 		json: Mapping[str, Any] | None = None,
 		params: Mapping[str, Any] | None = None,
+		headers: Mapping[str, str] | None = None,
 	) -> Any:
 		"""
 		JSON request against `base_url`. Raises `SpeechWeaveError` on HTTP >= 400.
@@ -131,7 +133,7 @@ class AsyncSpeechWeaveClient:
 		r = await self._client.request(
 			method,
 			self._url(path),
-			headers=self._auth_headers(json_body=json is not None),
+			headers={**self._auth_headers(json_body=json is not None), **(headers or {})},
 			json=json,
 			params=params,
 		)
@@ -191,7 +193,7 @@ class AsyncSpeechWeaveClient:
 		"""
 		Authenticated request returning the raw `httpx.Response`.
 
-		Merges Bearer / Accept / User-Agent; caller-supplied headers win on conflict.
+		Merges Bearer / Accept / User-Agent. Caller-supplied headers win on conflict.
 		"""
 
 		headers = kwargs.pop("headers", {}) or {}
@@ -307,19 +309,26 @@ class AsyncSpeechWeaveClient:
 	async def create_job(
 		self,
 		body: MutableMapping[str, Any],
+		*,
+		idempotency_key: str | None = None,
 	) -> dict[str, Any]:
 		"""
 		Create a transcription job from an uploaded object or remote URL.
 
 		Provide one of `object_key`, `input_url`, or `audio_url`. `type` defaults to
 		`transcription`. Omitting `service_mode` leaves the API default (standard).
-		Synchronous has its own size cap, at or below the account cap, see `get_limits`.
+		Standard service mode has its own size cap, at or below the account cap, see `get_limits`.
 
 		Args:
-			body: Job fields. `object_key` is from a prior presign after a PUT;
-				`input_url` / `audio_url` are publicly reachable audio URLs;
+			body: Job fields. `object_key` is from a prior presign after a PUT.
+				`input_url` / `audio_url` are publicly reachable audio URLs.
 				`language` is a two-letter ISO code (e.g. 'en', 'es').
+			idempotency_key: Optional `Idempotency-Key` (1 to 255 printable ASCII characters,
+				no spaces). Repeating a key within 24 hours returns the existing job.
 		"""
+
+		if idempotency_key is not None:
+			assert_valid_idempotency_key(idempotency_key)
 
 		payload: dict[str, Any] = {"type": body.get("type") or "transcription"}
 		for key in (
@@ -338,7 +347,12 @@ class AsyncSpeechWeaveClient:
 			if key in body and body[key] is not None:
 				payload[key] = body[key]
 
-		return await self.request_json("POST", "/jobs", payload)
+		return await self.request_json(
+			"POST",
+			"/jobs",
+			payload,
+			headers={"Idempotency-Key": idempotency_key} if idempotency_key is not None else None,
+		)
 
 	async def get_job(
 		self,
@@ -364,7 +378,7 @@ class AsyncSpeechWeaveClient:
 		async flow. Raises `SpeechWeaveError` (409) if the job isn't completed yet.
 
 		Args:
-			format: 'text' | 'srt' | 'vtt' return a raw string; 'verbose_json' returns a dict.
+			format: 'text' | 'srt' | 'vtt' return a raw string, and 'verbose_json' returns a dict.
 		"""
 
 		response = await self.raw_request("GET", f"/jobs/{job_id}", params={"format": format})
@@ -394,8 +408,8 @@ class AsyncSpeechWeaveClient:
 		List jobs for the authenticated account.
 
 		Args:
-			page: 1-based page; API default if omitted.
-			limit: Page size; API default if omitted.
+			page: 1-based page. API default if omitted.
+			limit: Page size. API default if omitted.
 			status: Filter by job status (queued, processing, completed, …).
 		"""
 		params: dict[str, Any] = {}
@@ -437,12 +451,13 @@ class AsyncSpeechWeaveClient:
 		timestamp_granularities: list[str] | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
+		idempotency_key: str | None = None,
 	) -> dict[str, Any]:
 		"""
 		Presign → PUT → create job.
 
-		Returns the create ack (no transcript); poll `get_job` or `async_wait_for_job`.
-		Sync file objects are streamed off-thread. Omitting `service_mode` leaves
+		Returns the create ack (no transcript). Poll `get_job` or `async_wait_for_job`.
+		Blocking file objects are streamed off-thread. Omitting `service_mode` leaves
 		the API default (standard).
 
 		Files whose size is measurable are checked against the account's limits
@@ -452,7 +467,7 @@ class AsyncSpeechWeaveClient:
 		Args:
 			file_obj: Open binary file or buffer to upload.
 			filename: Defaults to `audio.bin`.
-			content_type: Inferred from filename's extension when omitted; falls back to
+			content_type: Inferred from filename's extension when omitted, and falls back to
 				`application/octet-stream`.
 			language: Two-letter ISO code (e.g. 'en', 'es'). Ignored when task is 'translate'.
 			task: 'transcribe' (default) or 'translate' (translate to English).
@@ -460,7 +475,12 @@ class AsyncSpeechWeaveClient:
 			temperature: Decoding temperature, clamped to [0, 1] server-side.
 			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: `Content-Length` when the body cannot be measured.
+			idempotency_key: Optional `Idempotency-Key` (1 to 255 printable ASCII characters, no spaces).
+				Repeating a key within 24 hours returns the existing job instead of creating another.
 		"""
+
+		if idempotency_key is not None:
+			assert_valid_idempotency_key(idempotency_key)
 
 		content_type = content_type or infer_content_type(filename)
 		size_bytes = _content_length(file_obj, file_size=file_size)
@@ -496,4 +516,48 @@ class AsyncSpeechWeaveClient:
 		if metadata:
 			body["metadata"] = metadata
 
-		return await self.create_job(body)
+		return await self.create_job(body, idempotency_key=idempotency_key)
+
+	async def transcribe_file_and_wait(
+		self,
+		file_obj: BinaryIO,
+		*,
+		filename: str = "audio.bin",
+		content_type: str | None = None,
+		model: str | None = None,
+		service_mode: str | None = None,
+		language: str | None = None,
+		task: str | None = None,
+		prompt: str | None = None,
+		temperature: float | None = None,
+		timestamp_granularities: list[str] | None = None,
+		metadata: dict[str, Any] | None = None,
+		file_size: int | None = None,
+		idempotency_key: str | None = None,
+		timeout_sec: float = 300.0,
+		poll_sec: float = 1.5,
+	) -> dict[str, Any]:
+		"""
+		Upload, create the job, and poll until it finishes. Returns the final job.
+
+		Takes the same options as `transcribe_file`, plus `timeout_sec` and `poll_sec`.
+		Raises `SpeechWeaveError` with code `JOB_WAIT_TIMEOUT` on deadline.
+		"""
+
+		created = await self.transcribe_file(
+			file_obj,
+			filename=filename,
+			content_type=content_type,
+			model=model,
+			service_mode=service_mode,
+			language=language,
+			task=task,
+			prompt=prompt,
+			temperature=temperature,
+			timestamp_granularities=timestamp_granularities,
+			metadata=metadata,
+			file_size=file_size,
+			idempotency_key=idempotency_key,
+		)
+
+		return await async_wait_for_job(self, created["id"], timeout_sec=timeout_sec, poll_sec=poll_sec)

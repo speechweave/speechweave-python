@@ -1,6 +1,96 @@
 # Changelog
 
 
+## [2.0.0]
+
+### Breaking changes
+
+- **The Deepgram-style helper moved to `listen.v1.media.*` with keyword-only arguments**, like the current official Python SDK. `listen.prerecorded.*` is removed.
+
+  ```python
+  # before (1.x)
+  result = sw.listen.prerecorded.transcribe_url("https://example.com/a.mp3", model="core")
+
+  # after (2.0)
+  result = sw.listen.v1.media.transcribe_url(url="https://example.com/a.mp3", model="core")
+  result = sw.listen.v1.media.transcribe_file(request=open("a.mp3", "rb"), filename="a.mp3", model="core")
+  ```
+
+- **The AssemblyAI-style result key `language` is now `language_code`**, the name AssemblyAI uses. The `transcripts.transcribe(audio, config)` signature is unchanged, and `config` accepts `language_code` (and still `language`).
+
+  ```python
+  # before (1.x)
+  transcript = sw.transcripts.transcribe("call.mp3")
+  transcript["language"]
+
+  # after (2.0)
+  transcript["language_code"]
+  ```
+
+- **Unsupported options raise `UNSUPPORTED_OPTION` instead of being ignored.** The helpers raise a 400 `SpeechWeaveError` (before any request is sent) for options they do not read, such as `diarize`, `summarize` or `speaker_labels`. The option name is in `param` and the supported list is in the message.
+
+  ```python
+  # before (1.x): the option was silently dropped and the call succeeded
+  sw.listen.prerecorded.transcribe_url("https://example.com/a.mp3", diarize=True)
+
+  # after (2.0): raises SpeechWeaveError (status 400, code "UNSUPPORTED_OPTION", param "diarize")
+  sw.listen.v1.media.transcribe_url(url="https://example.com/a.mp3")
+  ```
+
+- **`confidence` is estimated or left out.** Word and overall `confidence` is derived from the model's segment log-probabilities and is omitted when the model reported none. It used to be a constant `1`.
+
+  ```python
+  # before (1.x)
+  word["confidence"]  # always 1
+
+  # after (2.0)
+  word.get("confidence")  # a number between 0 and 1, or None
+  ```
+
+- **AssemblyAI-style statuses use AssemblyAI's vocabulary.** A failed or cancelled job now reports `status` `"error"` (it was `failed` or `cancelled`), with `error` set to `"Transcription was cancelled"` for a cancelled job. `transcribe`, `get_by_id` and `wait_for_completion` return the transcript with that status instead of raising when a job fails, as the AssemblyAI SDK does.
+
+  ```python
+  # before (1.x)
+  try:
+  	transcript = sw.transcripts.transcribe("call.mp3")
+  except SpeechWeaveError:
+  	...  # job failed
+
+  # after (2.0)
+  transcript = sw.transcripts.transcribe("call.mp3")
+  if transcript["status"] == "error":
+  	print(transcript["error"])
+  ```
+
+- **Renamed limits field; the old name is removed.** The local upload gate reads `standard_max_bytes` from `GET /v1/limits` only (`sync_max_bytes` is no longer read), and `service_mode` is `standard` or `deferred` only (the `synchronous` and `asynchronous` spellings are no longer treated as service modes by the SDK).
+
+### Added
+
+- **Safe request retries (`idempotency_key`):** `create_job`, `transcribe_file`, `transcribe_file_and_wait` and `jobs.create` (sync and asyncio clients) accept an optional `idempotency_key`. Re-sending the same key within 24 hours returns the existing job instead of creating a duplicate. It must be 1 to 255 printable ASCII characters (no spaces), and an invalid key raises a 400 `INVALID_IDEMPOTENCY_KEY` error before any request.
+- **`transcribe_file_and_wait`** (sync and asyncio): uploads, creates the job and polls until it finishes. It takes the same options as `transcribe_file`, plus `timeout_sec` and `poll_sec`.
+- **Deepgram-style options** on `listen.v1.media.transcribe_file` and `transcribe_url`:
+  - `paragraphs` adds `alternatives[0].paragraphs`, grouped from sentence punctuation and pauses (a gap over 0.8 s, or 5 sentences, starts a new paragraph).
+  - `search` (a string or a list) adds `channels[0].search` with whole-word, case-insensitive hits and a snippet.
+  - `detect_language` sets `channels[0].detected_language` to the language the model reported.
+  - `replace` (`"find:replace"` or a list) rewrites whole words, case-insensitively, in the transcript, words and utterances.
+  - `profanity_filter` masks common English profanity as first letter plus asterisks. English only.
+  - `keyterm` and `keywords` bias the transcript toward your vocabulary through the model prompt. This is a bias, not a guarantee, and it is weaker than a dedicated keyword boost.
+- **AssemblyAI-style config keys** on `transcripts.transcribe` and `submit`: `language_detection` (cannot be combined with `language_code`, as in AssemblyAI), `custom_spelling`, `filter_profanity` (English only), `keyterms_prompt` and `word_boost` (a bias, not a guarantee). Text rewrites apply to the transcript the call returns. A later `get_by_id` of the same id returns the original text.
+- **AssemblyAI-style methods:** `export_subtitles_srt( id, chars_per_caption=None )` and `export_subtitles_vtt( id, chars_per_caption=None )` (`chars_per_caption` is accepted and ignored for now), `list_transcripts( params=None )` (`limit`, `status`, `page`, while `before_id` and `after_id` raise `UNSUPPORTED_OPTION`), `get_sentences( id )` and `get_paragraphs( id )` (times in milliseconds). All are also on the asyncio client.
+
+### Changed
+
+- **Deepgram-style helper follows the current official Python SDK:** `listen.v1.media.transcribe_url(url=..., model=...)` and `transcribe_file(request=<bytes or file>, ...)` are keyword-only like the official methods (async client too). `wait=False` still returns the created job.
+- **AssemblyAI-style helper follows the official `Transcriber` shape:** `transcripts.transcribe(audio, config=None, *, poll_timeout=None)` where `audio` is a public URL, a local file path, bytes or a file object, with new `submit`, `get_by_id` and `wait_for_completion`.
+- **Compat responses carry real word data and allow attribute access:** both helpers request word and segment timing, so Deepgram `words` (with `start`, `end`, `punctuated_word`) and AssemblyAI `words` (milliseconds) are populated instead of empty, and Deepgram metadata includes `duration`, `channels`, `created` and `models`. The Deepgram `utterances` option builds `results.utterances` from the transcript segments. Results are dicts that also allow attribute access (`resp.results.channels[0]...`, `transcript.text`).
+- **Service mode and delivery use separate vocabulary.** `service_mode` is `standard` or `deferred` only, and `sync` / `async` describe delivery (transcript in the same HTTP response, or a job id then poll or webhook). `AsyncSpeechWeave` is the asyncio client and is unrelated to delivery.
+- **`standard_max_bytes`:** the local upload gate reads the `standard_max_bytes` field from `GET /v1/limits`. The size error now says "standard service mode limit".
+
+### Fixed
+
+- A timed-out or dropped status check inside `wait_for_job` and `async_wait_for_job` is retried at the normal poll interval (up to `max_consecutive_network_errors`), including `httpx` timeouts and transport errors.
+
+
 ## [1.7.2]
 
 ### Fixed
@@ -66,7 +156,7 @@
 
 ### Fixed
 
-- **Linter Dependency Pinning:** Pinned `ruff` in `dev` dependencies (`0.15.21`) to match pre-commit configurations and prevent upstream version drift from breaking release builds. *(Note: Replaces* `1.1.0`*, which was not published to PyPI due to an automated CI workflow error; includes all* `1.1.0` *changes.)*
+- **Linter Dependency Pinning:** Pinned `ruff` in `dev` dependencies (`0.15.21`) to match pre-commit configurations and prevent upstream version drift from breaking release builds. *(Note: Replaces* `1.1.0`*, which was not published to PyPI due to an automated CI workflow error, and includes all* `1.1.0` *changes.)*
 
 
 ## [1.1.0]

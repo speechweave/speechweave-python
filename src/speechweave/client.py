@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any, BinaryIO, Mapping, MutableMapping, Union
 
@@ -9,10 +10,25 @@ import httpx
 from speechweave.errors import SpeechWeaveError
 from speechweave.limits import LIMITS_CACHE_SECONDS, check_within_limits
 from speechweave.mime import infer_content_type
+from speechweave.polling import wait_for_job
 from speechweave.version import __version__
 
 #: Bytes, buffer, or file-like object accepted by upload helpers.
 UploadBody = Union[bytes, bytearray, memoryview, BinaryIO]
+
+
+_IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[\x21-\x7E]{1,255}$")
+
+
+def assert_valid_idempotency_key(key: object) -> None:
+	"""Raise a 400 `SpeechWeaveError` unless key is 1 to 255 printable ASCII characters with no spaces."""
+
+	if not isinstance(key, str) or not _IDEMPOTENCY_KEY_PATTERN.fullmatch(key):
+		raise SpeechWeaveError(
+			"idempotency_key must be 1 to 255 printable ASCII characters with no spaces",
+			400,
+			"INVALID_IDEMPOTENCY_KEY",
+		)
 
 
 def _normalize_base(
@@ -62,7 +78,7 @@ def _upload_headers(
 
 class SpeechWeaveClient:
 	"""
-	Synchronous SpeechWeave `/v1` client (presign, jobs, uploads).
+	Blocking (non-asyncio) SpeechWeave `/v1` client (presign, jobs, uploads).
 	"""
 
 	def __init__(
@@ -78,7 +94,7 @@ class SpeechWeaveClient:
 			api_key: Falls back to `SPEECHWEAVE_API_KEY`. Raises if neither is set.
 			base_url: Defaults to `https://api.speechweave.com/v1`.
 			timeout: httpx timeout in seconds when constructing a new client.
-			client: Injected `httpx.Client`; caller owns close if provided.
+			client: Injected `httpx.Client`. Caller owns close if provided.
 		"""
 
 		self.api_key = api_key or os.environ.get("SPEECHWEAVE_API_KEY") or ""
@@ -139,6 +155,7 @@ class SpeechWeaveClient:
 		path: str,
 		json: Mapping[str, Any] | None = None,
 		params: Mapping[str, Any] | None = None,
+		headers: Mapping[str, str] | None = None,
 	) -> Any:
 		"""
 		JSON request against `base_url`. Raises `SpeechWeaveError` on HTTP >= 400.
@@ -150,7 +167,7 @@ class SpeechWeaveClient:
 		response = self._client.request(
 			method,
 			self._url(path),
-			headers=self._auth_headers(json_body=json is not None),
+			headers={**self._auth_headers(json_body=json is not None), **(headers or {})},
 			json=json,
 			params=params,
 		)
@@ -213,7 +230,7 @@ class SpeechWeaveClient:
 		"""
 		Authenticated request returning the raw `httpx.Response`.
 
-		Merges Bearer / Accept / User-Agent; caller-supplied headers win on conflict.
+		Merges Bearer / Accept / User-Agent. Caller-supplied headers win on conflict.
 		"""
 
 		headers = kwargs.pop("headers", {}) or {}
@@ -233,7 +250,7 @@ class SpeechWeaveClient:
 		"""
 		Upload ceilings in bytes for the calling API key. Values are account-specific.
 
-		Prefer `get_cached_limits` on hot paths; this always hits the network.
+		Prefer `get_cached_limits` on hot paths, since this always hits the network.
 		"""
 
 		return self.request_json("GET", "/limits")
@@ -310,7 +327,7 @@ class SpeechWeaveClient:
 		"""
 		PUT audio bytes to a presigned `upload_url`.
 
-		Sets `Content-Length` when the body can be measured; pass `file_size` for
+		Sets `Content-Length` when the body can be measured. Pass `file_size` for
 		non-seekable streams.
 
 		Args:
@@ -334,6 +351,8 @@ class SpeechWeaveClient:
 	def create_job(
 		self,
 		body: MutableMapping[str, Any],
+		*,
+		idempotency_key: str | None = None,
 	) -> dict[str, Any]:
 		"""
 		Create a transcription job from an uploaded object or remote URL.
@@ -343,10 +362,15 @@ class SpeechWeaveClient:
 		Standard mode has its own size cap, at or below the account cap, see `get_limits`.
 
 		Args:
-			body: Job fields. `object_key` is from a prior presign after a PUT;
-				`input_url` / `audio_url` are publicly reachable audio URLs;
+			body: Job fields. `object_key` is from a prior presign after a PUT.
+				`input_url` / `audio_url` are publicly reachable audio URLs.
 				`language` is a two-letter ISO code (e.g. 'en', 'es').
+			idempotency_key: Optional `Idempotency-Key` (1 to 255 printable ASCII characters,
+				no spaces). Repeating a key within 24 hours returns the existing job.
 		"""
+
+		if idempotency_key is not None:
+			assert_valid_idempotency_key(idempotency_key)
 
 		payload: dict[str, Any] = {"type": body.get("type") or "transcription"}
 		for key in (
@@ -365,7 +389,12 @@ class SpeechWeaveClient:
 			if key in body and body[key] is not None:
 				payload[key] = body[key]
 
-		return self.request_json("POST", "/jobs", payload)
+		return self.request_json(
+			"POST",
+			"/jobs",
+			payload,
+			headers={"Idempotency-Key": idempotency_key} if idempotency_key is not None else None,
+		)
 
 	def get_job(
 		self,
@@ -391,7 +420,7 @@ class SpeechWeaveClient:
 		async flow. Raises `SpeechWeaveError` (409) if the job isn't completed yet.
 
 		Args:
-			format: 'text' | 'srt' | 'vtt' return a raw string; 'verbose_json' returns a dict.
+			format: 'text' | 'srt' | 'vtt' return a raw string, and 'verbose_json' returns a dict.
 		"""
 
 		response = self.raw_request("GET", f"/jobs/{job_id}", params={"format": format})
@@ -421,8 +450,8 @@ class SpeechWeaveClient:
 		List jobs for the authenticated account.
 
 		Args:
-			page: 1-based page; API default if omitted.
-			limit: Page size; API default if omitted.
+			page: 1-based page. API default if omitted.
+			limit: Page size. API default if omitted.
 			status: Filter by job status (queued, processing, completed, …).
 		"""
 		params: dict[str, Any] = {}
@@ -464,11 +493,12 @@ class SpeechWeaveClient:
 		timestamp_granularities: list[str] | None = None,
 		metadata: dict[str, Any] | None = None,
 		file_size: int | None = None,
+		idempotency_key: str | None = None,
 	) -> dict[str, Any]:
 		"""
 		Presign → PUT → create job.
 
-		Returns the create ack (no transcript); poll `get_job` or `wait_for_job`.
+		Returns the create ack (no transcript). Poll `get_job` or `wait_for_job`.
 		Omitting `service_mode` leaves the API default (standard).
 
 		Files whose size is measurable are checked against the account's limits
@@ -478,7 +508,7 @@ class SpeechWeaveClient:
 		Args:
 			file_obj: Open binary file or buffer to upload.
 			filename: Defaults to `audio.bin`.
-			content_type: Inferred from filename's extension when omitted; falls back to
+			content_type: Inferred from filename's extension when omitted, and falls back to
 				`application/octet-stream`.
 			language: Two-letter ISO code (e.g. 'en', 'es'). Ignored when task is 'translate'.
 			task: 'transcribe' (default) or 'translate' (translate to English).
@@ -486,7 +516,12 @@ class SpeechWeaveClient:
 			temperature: Decoding temperature, clamped to [0, 1] server-side.
 			timestamp_granularities: Include 'word' for word-level timestamps.
 			file_size: `Content-Length` when the body cannot be measured.
+			idempotency_key: Optional `Idempotency-Key` (1 to 255 printable ASCII characters, no spaces).
+				Repeating a key within 24 hours returns the existing job instead of creating another.
 		"""
+
+		if idempotency_key is not None:
+			assert_valid_idempotency_key(idempotency_key)
 
 		content_type = content_type or infer_content_type(filename)
 		size_bytes = _content_length(file_obj, file_size=file_size)
@@ -529,4 +564,48 @@ class SpeechWeaveClient:
 		if metadata:
 			body["metadata"] = metadata
 
-		return self.create_job(body)
+		return self.create_job(body, idempotency_key=idempotency_key)
+
+	def transcribe_file_and_wait(
+		self,
+		file_obj: BinaryIO,
+		*,
+		filename: str = "audio.bin",
+		content_type: str | None = None,
+		model: str | None = None,
+		service_mode: str | None = None,
+		language: str | None = None,
+		task: str | None = None,
+		prompt: str | None = None,
+		temperature: float | None = None,
+		timestamp_granularities: list[str] | None = None,
+		metadata: dict[str, Any] | None = None,
+		file_size: int | None = None,
+		idempotency_key: str | None = None,
+		timeout_sec: float = 300.0,
+		poll_sec: float = 1.5,
+	) -> dict[str, Any]:
+		"""
+		Upload, create the job, and poll until it finishes. Returns the final job.
+
+		Takes the same options as `transcribe_file`, plus `timeout_sec` and `poll_sec`.
+		Raises `SpeechWeaveError` with code `JOB_WAIT_TIMEOUT` on deadline.
+		"""
+
+		created = self.transcribe_file(
+			file_obj,
+			filename=filename,
+			content_type=content_type,
+			model=model,
+			service_mode=service_mode,
+			language=language,
+			task=task,
+			prompt=prompt,
+			temperature=temperature,
+			timestamp_granularities=timestamp_granularities,
+			metadata=metadata,
+			file_size=file_size,
+			idempotency_key=idempotency_key,
+		)
+
+		return wait_for_job(self, created["id"], timeout_sec=timeout_sec, poll_sec=poll_sec)

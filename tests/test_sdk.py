@@ -160,8 +160,8 @@ def test_deepgram_compatibility_shape(
 
 	client = SpeechWeave(api_key=api_key)
 
-	response = client.listen.prerecorded.transcribe_file(
-		minimal_wav_audio,
+	response = client.listen.v1.media.transcribe_file(
+		request=minimal_wav_audio,
 		filename="test.wav",
 		model="core",
 	)
@@ -178,8 +178,8 @@ def test_deepgram_compatibility_url_shape(api_key):
 		pytest.skip("Skipping URL compat test because SPEECHWEAVE_TEST_AUDIO_URL is not set.")
 
 	client = SpeechWeave(api_key=api_key)
-	response = client.listen.prerecorded.transcribe_url(
-		url,
+	response = client.listen.v1.media.transcribe_url(
+		url=url,
 		model="core",
 	)
 	assert response is not None
@@ -209,7 +209,7 @@ def test_async_speechweave_exposes_compat_namespaces():
 	assert hasattr(client, "listen")
 	assert hasattr(client, "transcripts")
 	assert hasattr(client.audio, "transcriptions")
-	assert hasattr(client.listen, "prerecorded")
+	assert hasattr(client.listen.v1, "media")
 
 
 @pytest.mark.asyncio
@@ -956,7 +956,7 @@ def _limits_response(max_bytes: int):
 			"content": b"{}",
 			"json": lambda self: {
 				"max_input_bytes": max_bytes,
-				"sync_max_bytes": max_bytes,
+				"standard_max_bytes": max_bytes,
 				"proxy_max_bytes": max_bytes,
 			},
 		},
@@ -1038,7 +1038,7 @@ async def test_async_transcribe_file_rejects_oversized_input_before_presign():
 		new=AsyncMock(
 			return_value={
 				"max_input_bytes": 4,
-				"sync_max_bytes": 4,
+				"standard_max_bytes": 4,
 				"proxy_max_bytes": 4,
 			}
 		),

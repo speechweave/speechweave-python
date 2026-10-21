@@ -4,7 +4,7 @@ from speechweave.limits import check_within_limits
 
 _LIMITS = {
 	"max_input_bytes": 1000,
-	"sync_max_bytes": 500,
+	"standard_max_bytes": 500,
 	"proxy_max_bytes": 500,
 }
 
@@ -21,8 +21,8 @@ def test_raises_over_account_cap():
 	assert exc_info.value.code == "FILE_TOO_LARGE"
 
 
-def test_points_at_deferred_when_only_the_sync_cap_is_exceeded():
-	for mode in (None, "standard", "synchronous"):
+def test_points_at_deferred_when_only_the_standard_cap_is_exceeded():
+	for mode in (None, "standard"):
 		with pytest.raises(SpeechWeaveError) as exc_info:
 			check_within_limits(600, _LIMITS, mode)
 
@@ -35,9 +35,9 @@ def test_deferred_skips_the_stricter_standard_cap():
 
 def test_does_not_suggest_deferred_when_the_account_cap_is_the_binding_one():
 	"""The 500-vs-512 bug: advising deferred for a size deferred also rejects."""
-	limits = {"max_input_bytes": 500, "sync_max_bytes": 500, "proxy_max_bytes": 500}
+	limits = {"max_input_bytes": 500, "standard_max_bytes": 500, "proxy_max_bytes": 500}
 	with pytest.raises(SpeechWeaveError) as exc_info:
-		check_within_limits(600, limits, "synchronous")
+		check_within_limits(600, limits, "standard")
 
 	assert "deferred" not in str(exc_info.value)
 

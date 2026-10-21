@@ -39,8 +39,8 @@ class _Transcriptions:
 		"""
 		OpenAI-shaped transcription create, drop-in compatibility wrapper.
 
-		`response_format` 'json' (default) and 'verbose_json' return a dict;
-		'text' / 'srt' / 'vtt' return a raw string.
+		`response_format` 'json' (default) and 'verbose_json' return a dict,
+		and 'text' / 'srt' / 'vtt' return a raw string.
 		"""
 
 		job = upload_and_create_job(

@@ -89,8 +89,8 @@ async def async_wait_for_job(
 	"""
 	Poll `get_job` until completed, failed, or cancelled.
 
-	A transient network erroris retried at the normal poll interval instead
-	 of failing the wait outright, up to `max_consecutive_network_errors` in a row.
+	A transient network error is retried at the normal poll interval instead
+	of failing the wait outright, up to `max_consecutive_network_errors` in a row.
 	A 429 (rate limited) response is always retried -- using the server's
 	`retry_after` when present, else the normal poll interval -- since it reflects
 	polling pressure, not the job's own outcome, and doesn't count against

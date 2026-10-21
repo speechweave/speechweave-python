@@ -22,7 +22,7 @@ def verify_webhook(
 		secret: Active webhook signing secret, or `[active, previous]` during a rotation window.
 		raw_body: Exact request body string (use raw bytes as UTF-8 string).
 		signature_header: Value of the `SpeechWeave-Signature` header.
-		tolerance_sec: Max clock skew in seconds; defaults to 300.
+		tolerance_sec: Max clock skew in seconds. Defaults to 300.
 	"""
 
 	if isinstance(secret, (list, tuple)):
